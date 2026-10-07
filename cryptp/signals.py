@@ -1,7 +1,10 @@
 """TradingView alert signals (Wyckoff + Smart Money Concepts) and confluence rules."""
 from __future__ import annotations
 
+import logging
 import re
+import sqlite3
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -42,13 +45,40 @@ def parse_signal(payload: dict, now: float | None = None) -> Signal:
                   now if now is not None else time.time())
 
 
+RETENTION_SEC = 7 * 86400
+
+
 class SignalBook:
-    def __init__(self, cfg):
+    """Latest timestamp per (symbol, event). Optionally persisted to SQLite so redeploys keep state."""
+
+    def __init__(self, cfg, path: str | None = None):
         self.cfg = cfg
         self.last: dict[str, dict[str, float]] = {}
+        self._db = None
+        self._lock = threading.Lock()
+        if path:
+            try:
+                self._db = sqlite3.connect(path, check_same_thread=False)
+                self._db.execute("CREATE TABLE IF NOT EXISTS signals ("
+                                 "symbol TEXT, event TEXT, ts REAL, PRIMARY KEY (symbol, event))")
+                self._db.execute("DELETE FROM signals WHERE ts < ?", (time.time() - RETENTION_SEC,))
+                self._db.commit()
+                for sym, ev, ts in self._db.execute("SELECT symbol, event, ts FROM signals"):
+                    self.last.setdefault(sym, {})[ev] = ts
+            except sqlite3.Error:
+                logging.exception("signal store unavailable, continuing in memory: %s", path)
+                self._db = None
 
     def record(self, sig: Signal) -> None:
-        self.last.setdefault(sig.symbol, {})[sig.event] = sig.ts
+        with self._lock:
+            self.last.setdefault(sig.symbol, {})[sig.event] = sig.ts
+            if self._db:
+                try:
+                    self._db.execute("INSERT OR REPLACE INTO signals VALUES (?, ?, ?)",
+                                     (sig.symbol, sig.event, sig.ts))
+                    self._db.commit()
+                except sqlite3.Error:
+                    logging.exception("failed to persist signal %s", sig)
 
     def _latest(self, symbol: str, events: set[str], now: float, ttl_min: float):
         ev = self.last.get(symbol, {})

@@ -102,7 +102,7 @@ def cmd_webhook(cfg, args):
         return float(c["high"]), float(c["low"])
 
     equity = (lambda: float(ex.fetch_balance()["USDT"]["total"])) if live else (lambda: executor.equity)
-    agent = TradeAgent(cfg, SignalBook(cfg.signals), RiskGate(cfg.risk), executor, get_market, equity,
+    agent = TradeAgent(cfg, SignalBook(cfg.signals, os.environ.get("CRYPTP_DB")), RiskGate(cfg.risk), executor, get_market, equity,
                        get_candle, live)
 
     async def ticker(_app):

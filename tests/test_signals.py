@@ -117,3 +117,31 @@ def test_webhook_returns_502_when_exchange_fails():
             assert r.status == 502 and "geo-blocked" in (await r.json())["error"]
 
     asyncio.run(go())
+
+
+def test_book_persists_across_restart(tmp_path):
+    import time as _t
+    now = _t.time()
+    db = str(tmp_path / "s.db")
+    b1 = SignalBook(cfg.signals, db)
+    b1.record(Signal("wy_spring", "BTC/USDT:USDT", ts=now))
+    b1.record(Signal("smc_bull_choch", "BTC/USDT:USDT", ts=now + 60))
+    b2 = SignalBook(cfg.signals, db)                      # simulated redeploy
+    assert b2.armed_long("BTC/USDT:USDT", now + 120)[0]
+    b2.record(Signal("smc_bear_choch", "BTC/USDT:USDT", ts=now + 180))
+    assert SignalBook(cfg.signals, db).smc_bias("BTC/USDT:USDT", now + 240) == -1
+
+
+def test_book_prunes_old_rows(tmp_path):
+    import time as _t
+    db = str(tmp_path / "s.db")
+    b1 = SignalBook(cfg.signals, db)
+    b1.record(Signal("wy_spring", "BTC/USDT:USDT", ts=_t.time() - 8 * 86400))
+    b1.record(Signal("wy_sos", "BTC/USDT:USDT", ts=_t.time()))
+    assert set(SignalBook(cfg.signals, db).last["BTC/USDT:USDT"]) == {"wy_sos"}
+
+
+def test_book_survives_bad_path():
+    b = SignalBook(cfg.signals, "/nonexistent-dir/x.db")   # falls back to memory
+    b.record(S("wy_spring", 0))
+    assert "wy_spring" in b.last["BTC/USDT:USDT"]
