@@ -43,6 +43,14 @@ Bar-by-bar replay of the same analyzer, planner, risk gate and paper executor th
   cannot run here. To test those, export the alert history and add it as a signal source.
 - Fetched candles are cached in `data/`. `--synthetic` is a pipeline check only; its results mean nothing.
 
+## Daily trend dashboard
+`/dashboard` (HTML) and `/api/trend` (JSON) on the running service, or `python -m cryptp dashboard [--csv-dir DIR] [--json]`.
+For each coin in `config.yaml` -> `dashboard.symbols`: last completed daily close vs its 200-day average (LONG / FLAT), days in
+state, move since the flip, distance to the line, 30-day slope of the average, flips in the last year, and the latest perp funding.
+**Closed candles only**: today's forming candle is dropped before anything is computed. Reads Bybit *mainnet* public data (no keys,
+never testnet). Cached 10 minutes. Set env `DASHBOARD_TOKEN` to require `?token=...`. It is a trend state, not a forecast: see
+`docs/TREND_PREREG.md` and `docs/FUNDING_PREREG.md` for what the backtests did and did not show.
+
 ## Dumb Money filter (optional)
 `cryptp/dumbmoney.py` is a Python port of the signal logic of *Dumb Money Concepts* by theUltimator5
 (MPL 2.0, notice kept in the file). That script has no alerts, so it can't be fed in over a webhook; the

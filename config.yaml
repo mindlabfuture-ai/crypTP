@@ -47,3 +47,10 @@ dumb_money:
   capitulation_bars: 12
   index_hot: 70
   index_cold: 30
+
+dashboard:
+  symbols: ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "ADA/USDT:USDT", "SUI/USDT:USDT"]
+  sma: 200
+  near_pct: 3.0            # display-only: flag coins within this % of their average
+  cache_seconds: 600       # refresh at most this often (exchange rate limits)
+  # set env DASHBOARD_TOKEN to require ?token=... on /dashboard and /api/trend

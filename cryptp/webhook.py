@@ -11,7 +11,7 @@ from aiohttp import web
 from .signals import parse_signal
 
 
-def create_app(agent, secret: str) -> web.Application:
+def create_app(agent, secret: str, dashboard=None, dashboard_token: str = "") -> web.Application:
     if not secret:
         raise ValueError("TV_WEBHOOK_SECRET must be set")
 
@@ -36,6 +36,29 @@ def create_app(agent, secret: str) -> web.Application:
     async def health(_):
         return web.json_response({"ok": True})
 
+    def _authorised(request: web.Request) -> bool:
+        return not dashboard_token or hmac.compare_digest(request.query.get("token", ""), dashboard_token)
+
+    async def dash_page(request: web.Request) -> web.Response:
+        if dashboard is None:
+            return web.Response(status=404, text="dashboard not enabled")
+        if not _authorised(request):
+            return web.Response(status=403, text="forbidden")
+        from .dashboard import render_html
+        rep = await asyncio.to_thread(dashboard.get)
+        return web.Response(text=render_html(rep), content_type="text/html")
+
+    async def dash_json(request: web.Request) -> web.Response:
+        if dashboard is None:
+            return web.json_response({"error": "dashboard not enabled"}, status=404)
+        if not _authorised(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+        return web.json_response(await asyncio.to_thread(dashboard.get))
+
+    async def root(_):
+        raise web.HTTPFound("/dashboard" if dashboard is not None else "/health")
+
     app = web.Application()
-    app.add_routes([web.post("/tv", tv), web.get("/health", health)])
+    app.add_routes([web.post("/tv", tv), web.get("/health", health), web.get("/", root),
+                    web.get("/dashboard", dash_page), web.get("/api/trend", dash_json)])
     return app

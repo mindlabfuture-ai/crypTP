@@ -5,7 +5,7 @@ import os
 import time
 
 from .config import load_config
-from .exchange import fetch_ohlcv_df, make_exchange
+from .exchange import fetch_ohlcv_df, make_exchange, make_public_exchange
 from .executor import LiveExecutor, PaperExecutor
 from .indicators import atr
 from .planner import build_plan_any
@@ -161,6 +161,37 @@ def cmd_trend(cfg, args):
     print(f"latest close {r['last_close']:.4f} vs SMA{args.sma} {r['last_sma']:.4f}: {state}")
 
 
+def _dashboard_service(cfg, ex=None, csv_dir=None):
+    """`ex` is ignored on purpose: the dashboard always reads mainnet public data (never the trading agent's testnet)."""
+    from .backtest import load_csv
+    from .dashboard import DashboardService
+
+    d = cfg.dashboard
+    if csv_dir:
+        fetch = lambda sym: load_csv(f"{csv_dir}/{sym.split('/')[0]}_1d.csv")
+        funding = None
+    else:
+        pub = make_public_exchange()
+        fetch = lambda sym: fetch_ohlcv_df(pub, sym, "1d", 800)
+
+        def funding(sym):
+            fr = pub.fetch_funding_rate(sym)
+            iv = str(fr.get("interval") or "8h")
+            hours = float(iv[:-1]) if iv[:-1].replace(".", "").isdigit() and iv.endswith("h") else 8.0
+            return float(fr["fundingRate"]) * (24 / hours) * 365 * 100
+    return DashboardService(fetch, d.symbols, d.sma, d.near_pct, d.cache_seconds, funding)
+
+
+def cmd_dashboard(cfg, args):
+    import json as _json
+
+    from .dashboard import render_text
+
+    svc = _dashboard_service(cfg, None, args.csv_dir)
+    rep = svc.get()
+    print(_json.dumps(rep, indent=1, default=str) if args.json else render_text(rep))
+
+
 def cmd_webhook(cfg, args):
     import asyncio
 
@@ -202,7 +233,12 @@ def cmd_webhook(cfg, args):
         yield
         task.cancel()
 
-    app = create_app(agent, os.environ.get("TV_WEBHOOK_SECRET", ""))
+    dash = _dashboard_service(cfg)
+    app = create_app(agent, os.environ.get("TV_WEBHOOK_SECRET", ""), dash, os.environ.get("DASHBOARD_TOKEN", ""))
+
+    async def warm(_app):                                   # build the first report in the background so page 1 is fast
+        asyncio.create_task(asyncio.to_thread(dash.get))
+    app.on_startup.append(warm)
     app.cleanup_ctx.append(ticker)
     port = int(os.environ.get("PORT", cfg.signals.port))
     print(f"mode={'LIVE' if live else 'PAPER'} testnet={cfg.exchange.testnet} port={port}")
@@ -245,11 +281,14 @@ def main():
     t.add_argument("--fee", type=float, default=0.055)
     t.add_argument("--slip", type=float, default=2.0)
     t.add_argument("--equity", type=float, default=1000.0)
+    db = sub.add_parser("dashboard")
+    db.add_argument("--csv-dir", help="read DIR/{COIN}_1d.csv instead of fetching from the exchange")
+    db.add_argument("--json", action="store_true")
     w = sub.add_parser("webhook")
     w.add_argument("--live", action="store_true")
     args = p.parse_args()
     cfg = load_config(args.config)
-    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular, "trend": cmd_trend}[args.cmd](cfg, args)
+    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular, "trend": cmd_trend, "dashboard": cmd_dashboard}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":

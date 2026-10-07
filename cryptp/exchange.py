@@ -17,6 +17,12 @@ def make_exchange(cfg, authed: bool = False):
     return ex
 
 
+def make_public_exchange():
+    """Bybit MAINNET, public data only: no keys, never testnet (testnet history is unreliable).
+    Used for read-only market views such as the trend dashboard, independent of the trading agent's settings."""
+    return ccxt.bybit({"enableRateLimit": True, "options": {"defaultType": "swap"}})
+
+
 def fetch_ohlcv_df(ex, symbol: str, timeframe: str, limit: int = 200) -> pd.DataFrame:
     raw = ex.fetch_ohlcv(symbol, timeframe, limit=limit)
     df = pd.DataFrame(raw, columns=["ts", "open", "high", "low", "close", "volume"])
