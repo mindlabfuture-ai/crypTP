@@ -34,7 +34,7 @@ strip = lambda d: {k: v for k, v in d.items() if k != "R"}
 out = {"main": strip(evaluate(df, DailyParams())),
        "gross": strip(evaluate(df, DailyParams(), 0.0, 0.0)),
        "filter_off": strip(evaluate(df, DailyParams(daily_filter="off"))),
-       "filter_inverted": strip(evaluate(df, DailyParams(daily_filter="inverted")))}
+       "filter_inverted": strip(evaluate(df, DailyParams(daily_filter="opposite")))}
 # causality: trades from a truncated run must equal the full run's trades that exit before the cut
 k = int(len(df) * 0.6)
 full = run_daily15m(df, daily, SYM).trades

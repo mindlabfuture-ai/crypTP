@@ -206,3 +206,25 @@ def test_daily15m_filter_uses_closed_daily_only():
     d6 = (m15["ts"] >= days[6]) & (m15["ts"] < days[7])
     assert not allowed[d5.to_numpy()].any()             # the flip candle itself is not closed during its own day
     assert allowed[d6.to_numpy()].all()
+
+
+def test_daily15m_short_is_exact_mirror_of_long():
+    import numpy as np, pandas as pd
+    from cryptp.backtest import synthetic_ohlcv
+    from cryptp.daily15m import DailyParams, run_daily15m
+    df = synthetic_ohlcv(6000, seed=3)
+    daily = df.set_index("ts").resample("1D").agg({"open": "first", "high": "max", "low": "min", "close": "last",
+                                                    "volume": "sum"}).dropna().reset_index()
+    C = 2 * max(df["high"].max(), daily["high"].max())
+
+    def refl(x):
+        y = x.copy()
+        y["open"], y["close"] = C - x["open"], C - x["close"]
+        y["high"], y["low"] = C - x["low"], C - x["high"]
+        return y
+    kw = dict(sma_days=5, min_stop_pct=0.0, max_stop_pct=1e6, max_leverage=1e6)
+    a = run_daily15m(df, daily, "X", DailyParams(side="short", **kw), 0.0, 0.0).trades
+    b = run_daily15m(refl(df), refl(daily), "X", DailyParams(side="long", **kw), 0.0, 0.0).trades
+    assert len(a) > 5 and len(a) == len(b)
+    assert [t.entry_ts for t in a] == [t.entry_ts for t in b]
+    assert np.allclose([t.r for t in a], [t.r for t in b], atol=1e-6)
