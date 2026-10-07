@@ -64,3 +64,46 @@ funding paid/received.
 Every day after 00:05 UTC it proposes the candidates these rules produce (coin, limit level, stop, 3R target, RS, regime). You approve or skip each one.
 It then tracks every candidate's outcome on live 1h candles at the costs above: approved ones count as your paper trades; skipped ones are tracked as
 "shadow" trades, so after a few weeks you can see whether your approvals beat the system's unfiltered picks.
+
+---
+# RESULT (single run on the approved rules; one implementation fix disclosed)
+
+Status: **FAIL** (7 of 9 criteria missed). Run with `tools/run_rspullback.py`.
+Disclosed fix: the first run started the test period on 2024-03-03 because the code waited for SEI's SMA-200; the pre-registration says the period
+starts when the five breadth coins have one (SEI joins when eligible). I fixed that one line and re-ran; both runs fail the same criteria
+(first run: 30 trades, -0.40 R). Reported below is the corrected run. Two other runner fixes before any result: a timezone bug in the funding lookup
+(crashed) and a per-day cache (speed only).
+
+Period 2023-11-26 -> 2026-09-07. RISK-ON days produced 524 picks; 236 skipped because the day did not open above yesterday's VWAP, 219 because the
+stop would be wider than 3% -> **69 orders, 45 filled (65%), 42 trades** after the portfolio rules.
+
+| | Trades | Win % | Avg R | SE | Avg R - 2.5 SE | PF | Net | Max DD (realised) |
+|---|---|---|---|---|---|---|---|---|
+| **Main** | 42 | 21.4 | -0.310 | 0.237 | -0.903 | 0.63 | -12.6% | -13.8% |
+| Gross of fees and funding | 42 | | -0.250 | | | | | |
+
+| Criterion | Result |
+|---|---|
+| >= 100 trades | **FAIL** (42) |
+| Avg R - 2.5 SE > 0 | **FAIL** (-0.90) |
+| PF >= 1.2 | **FAIL** (0.63) |
+| Gross avg R > 0 | **FAIL** (-0.25) |
+| Max DD < 25% | pass (-13.8%) |
+| Both halves > 0 | **FAIL** (H1 -0.44 on 25; H2 -0.11 on 17) |
+| Leave-one-coin-out all > 0 | **FAIL** (every one negative, -0.19 to -0.54) |
+| Beats random-coin p95 | **FAIL** (-0.31 vs p95 -0.02; random median -0.24) |
+| Prefix test | pass |
+
+Per coin: ETH 20 trades +0.04 R; SOL 12 -0.73; ADA 5 -0.73; SUI 4 -0.08; SEI 1 -1.21. Exits: 33 stops, 7 targets, 2 time stops.
+Costs were small as designed (gross -0.25 vs net -0.31: maker entries and 1.5-3% stops did their job; funding -0.03 R).
+Variants (reported only): no regime filter 72 trades +0.08 R, PF 1.11 (not significant; SE ~0.2); top-1 only 26 trades -0.25 R; taker entry -0.33 R.
+
+Reading:
+- The cost fix worked; the edge did not appear. Before any costs the trades lose a quarter of R each: buying the strongest coin's pullback to
+  yesterday's VWAP was, on this history, mostly catching the start of a deeper pullback (33 of 42 hit the stop).
+- Relative strength did not beat a random eligible coin (-0.31 vs random median -0.24).
+- The rules trade rarely (42 trades in ~2.8 years): most RS days either never pull back to the level or need a stop wider than 3%.
+- The "no regime" variant being slightly positive is a reported-only number on 72 trades with a standard error near 0.2. Chasing it would repeat
+  the after-the-fact search this process is designed to prevent.
+- Per the pre-registration: no retuning. The journal keeps running because its purpose is to measure YOUR approve/skip decisions against the
+  system's picks, which a backtest cannot do; on this evidence the system's own picks should be expected to lose.
