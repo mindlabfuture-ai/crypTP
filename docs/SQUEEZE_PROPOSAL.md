@@ -1,7 +1,7 @@
-# DRAFT proposal: intraday squeeze-breakout, SUI 15m, 1:5 RR, $1,000
+# PRE-REGISTRATION: intraday squeeze-breakout, SUI 15m, 1:5 RR, $1,000
 
-**Status: PROPOSAL, awaiting approval. Not yet pre-registered; no strategy result has been computed.**
-Once approved, this file becomes the pre-registration and is frozen before the first backtest runs.
+**Status: APPROVED by the user on 2026-10-07 ("approve, build it and run on SUI") and FROZEN before any strategy result was computed.**
+Do not edit the rules or criteria below; append a dated note instead.
 Only event COUNTS and price-range facts (no returns, no win rates) were looked at while designing it.
 
 ## Idea
@@ -40,3 +40,15 @@ Also reported (not for selection): L = 4 and 8, volume 1.0x, far-side stop, as r
 ## Known limits
 One coin, ~3.4 years, dominated by SUI's 2025-26 decline; idealised fills (no queue, partial fills or outages); OKX data stands in for Bybit;
 taker fees assumed (maker/limit entries would cut costs but cannot be simulated honestly here).
+
+---
+## Implementation notes (added at freeze, BEFORE any run; they only fix details the rules left implicit)
+- The release bar counts as bar 1 of the 4-bar trigger window. The FIRST bar that closes outside the box ends the setup whether or not the
+  filters pass (a failed filter means no trade for that setup; later bars are not scanned).
+- Momentum = linear-regression value (length 20) of close minus the average of (mid of the 20-bar high/low range) and SMA20(close).
+- The 0.45%-3% stop test uses the trigger bar's close and the box midpoint. After the fill at the next open, R = |fill price - stop|;
+  the target is fill +/- 5R, and position size risks 1% of equity on that R. If the fill is already beyond the stop, skip the trade.
+- A time exit at the 00:00 UTC bar's open is a market order (adverse slippage, taker fee). Stops are market (adverse slippage); the target is a
+  limit (no slippage). If a bar reaches both stop and target, the stop is assumed first. A stop that gaps fills at the open.
+- If a position is open when a trigger occurs, the trigger is skipped (one position at a time).
+- Criterion 3 uses 2.5 standard errors. Average R and its standard error are over all trades, including time exits.
