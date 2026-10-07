@@ -56,3 +56,32 @@ Final: holdout must meet the same criteria; a PASS then means "paper-forward at 
 ## What happens after
 - FAIL: stop searching for SUI entry signals on this data; keep the daily SMA-200 state (spot risk management), the dashboard and the safety checks.
 - PASS (validation then holdout): paper-forward on Bybit testnet >= 60 days; live stays gated (CRYPTP_ALLOW_LIVE=yes plus --live).
+
+---
+# VALIDATION RESULT (single run, rules unchanged from the draft above; approved before running)
+
+Status: **FAIL. The final holdout was NOT run and stays sealed.** Run with `tools/run_bounce.py ... validation`.
+Window 2025-01-20 15:45 -> 2025-11-29 03:00 UTC; 754 raw signals, 205 trades after the one-position, 3-per-day, stop-size and cutoff rules.
+
+| Run | Trades | Win % | Avg R | SE | Avg R - 2.5 SE | PF | Net | Max DD |
+|---|---|---|---|---|---|---|---|---|
+| **Main (fees, slippage, funding)** | 205 | 25.9 | -0.151 | 0.156 | -0.542 | 0.83 | -30.2% | -45.5% |
+| Gross (no costs, no funding) | 206 | 26.7 | +0.072 | 0.160 | -0.329 | 1.06 | +10.1% | -27.5% |
+| Control: fixed +3R, no trail | 208 | 26.0 | -0.180 | 0.120 | -0.478 | 0.80 | -33.2% | -39.0% |
+| Random entries, same exit (200 runs, avg R) | - | - | p50 -0.250, p95 -0.103, max +0.032 | | | | | |
+
+Criteria: trades >= 100 passed; gross avg R > 0 passed (+0.07, but not distinguishable from zero: SE 0.16); every other criterion
+**failed**: avg R - 2.5 SE (-0.54), PF 0.83 vs 1.15, net avg R (-0.15), max drawdown (-45.5% vs 25%), positive months (3 of 10 with
+>= 10 trades), beating the random-entry 95th percentile (-0.151 vs -0.103). Causality (prefix) test: passed.
+
+Facts worth keeping:
+- The exit has the expected shape: 48 of 205 trades reached +3R (armed), the best ran +16.6 R, and the win rate is ~26% (the mix needs
+  ~25% at 1:3 before costs). Running winners added about +0.03 R over the fixed 1:3 control; small and well inside the noise.
+- The bounce entry is somewhat better than random entry with the same exit (-0.15 vs median -0.25), consistent with a small real bounce,
+  but not enough: the 95th percentile of random entries is -0.10, and costs (-0.22 R gross-to-net, of which funding $4.77) consume the
+  +0.07 R gross edge.
+- The midnight flat cut 9 trades that were above +1R at the time (~4% of trades).
+- Median stop 0.70% of price: tight stops make a fixed ~15 bps round trip cost ~0.22 R per trade. A scalper's cost problem, not a bug.
+
+Conclusion: no net edge on validation. No retuning is permitted on this segment or the holdout. Per the pre-registered consequence:
+stop searching for SUI entry signals on this data.
