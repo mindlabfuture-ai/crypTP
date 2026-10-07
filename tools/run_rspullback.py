@@ -35,6 +35,16 @@ def days_range(daily, h1):
 
 
 _cache = {}
+_day_cache = {}
+
+
+def day_info(day, p, tradable, daily):
+    """Regime, RS ranking and eligible coins for a day (pure functions of closed daily candles; cached for speed only)."""
+    key = (day, p.use_regime, tuple(tradable), id(daily))
+    if key not in _day_cache:
+        ok = regime(daily, BREADTH, day, p)[0] if p.use_regime else True
+        _day_cache[key] = (ok, rank_rs(daily, tradable, BENCH, day, p) if ok else [], eligible(daily, tradable, day, p) if ok else [])
+    return _day_cache[key]
 
 
 def outcome(day, coin, rs, p, h1):
@@ -54,12 +64,10 @@ def run(p=P, tradable=TRADABLE, daily=DAILY, h1=H1, picker=None):
     """picker(day, ranked, elig) -> picks; default = RS top-N."""
     cands, skips = [], {}
     for day in days_range(daily, h1):
-        if p.use_regime:
-            ok, _ = regime(daily, BREADTH, day, p)
-            if not ok:
-                continue
-        ranked = rank_rs(daily, tradable, BENCH, day, p)
-        picks = ranked[: p.top_n] if picker is None else picker(day, ranked[: p.top_n], eligible(daily, tradable, day, p))
+        ok, ranked, elig = day_info(day, p, tradable, daily)
+        if not ok:
+            continue
+        picks = ranked[: p.top_n] if picker is None else picker(day, ranked[: p.top_n], elig)
         for coin, rs in picks:
             pl, why, out = outcome(day, coin, rs, p, h1)
             if pl is None:
