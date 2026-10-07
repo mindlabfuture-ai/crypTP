@@ -55,3 +55,11 @@ dashboard:
   near_pct: 3.0            # display-only: flag coins within this % of their average
   cache_seconds: 600       # refresh at most this often (exchange rate limits)
   # set env DASHBOARD_TOKEN to require ?token=... on /dashboard and /api/trend
+
+safety:                    # Bybit perp guards, applied by LiveExecutor before and after every live entry (see cryptp/safety.py)
+  isolated: true           # isolated margin only
+  liq_buffer: 0.5          # stop must be within this fraction of the distance to liquidation
+  mmr_pct: 0.5             # ASSUMED maintenance margin rate (% of notional): verify per symbol before going live
+  max_entry_drift_pct: 0.5 # block if live price moved this far from the planned entry
+  max_adverse_funding_8h_pct: 0.05   # block if this side pays more than this per 8h (baseline is 0.01)
+  require_exchange_stop: true        # no stop on the exchange after entry => flatten + write KILL

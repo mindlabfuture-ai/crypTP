@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 
 from .planner import TradePlan
+from .safety import SafetyError, check_perp_order, isolated_leverage, safety_cfg, verify_exchange_stop
 
 
 @dataclass
@@ -80,26 +82,74 @@ class PaperExecutor:
 
 
 class LiveExecutor:
-    """Real orders. UNTESTED against live Bybit from this repo's CI: use testnet first."""
+    """Real orders. UNTESTED against live Bybit from this repo's CI: use testnet first.
 
-    def __init__(self, exchange):
+    Every entry passes cryptp.safety first (leverage cap, stop-vs-liquidation distance, price drift, adverse funding, exchange
+    minimums), is placed on ISOLATED margin with the stop attached to the entry order, and is then verified: if the exchange does
+    not hold the stop, the position is flattened and the KILL file is written so nothing else trades until a human clears it."""
+
+    def __init__(self, exchange, safety=None, max_leverage: float = 3.0, kill_file: str = "KILL"):
         if os.getenv("CRYPTP_ALLOW_LIVE", "no").lower() != "yes":
             raise RuntimeError("Live trading disabled. Set CRYPTP_ALLOW_LIVE=yes to enable.")
         self.ex = exchange
+        self.safety = safety_cfg(safety)
+        self.max_leverage = max_leverage
+        self.kill_file = Path(kill_file)
+
+    def _pre_trade(self, plan: TradePlan, qty: float) -> int:
+        sym = plan.symbol
+        equity = float(self.ex.fetch_balance()["USDT"]["total"])
+        last = float(self.ex.fetch_ticker(sym)["last"])
+        fr = None
+        try:
+            fr = float(self.ex.fetch_funding_rate(sym)["fundingRate"]) * 100
+        except Exception:
+            pass                                          # funding unavailable: the other checks still apply
+        limits = (self.ex.market(sym) or {}).get("limits") or {}
+        ok, why = check_perp_order(plan, qty, equity, self.max_leverage, self.safety, last, fr,
+                                   (limits.get("amount") or {}).get("min"), (limits.get("cost") or {}).get("min"))
+        if not ok:
+            raise SafetyError(f"{sym}: " + "; ".join(why))
+        return isolated_leverage(qty * plan.entry, equity, self.max_leverage)
 
     def submit(self, plan: TradePlan, qty: float) -> str:
         sym = plan.symbol
         qty = float(self.ex.amount_to_precision(sym, qty))
+        if self.kill_file.exists():
+            raise SafetyError("kill switch file present")
+        lev = self._pre_trade(plan, qty)
+        if self.safety.isolated:
+            try:
+                self.ex.set_margin_mode("isolated", sym, params={"leverage": lev})
+            except Exception as e:                        # Bybit errors when the mode is already set: only that is fine
+                if "not modified" not in str(e).lower() and "already" not in str(e).lower():
+                    raise SafetyError(f"{sym}: could not set isolated margin: {e}")
+        try:
+            self.ex.set_leverage(lev, sym)
+        except Exception as e:
+            if "not modified" not in str(e).lower():
+                raise SafetyError(f"{sym}: could not set leverage {lev}x: {e}")
         exit_side = "sell" if plan.side == "buy" else "buy"
         order = self.ex.create_order(
             sym, "market", plan.side, qty, params={"stopLoss": self.ex.price_to_precision(sym, plan.stop)}
         )
+        if self.safety.require_exchange_stop:
+            ok, why = verify_exchange_stop(self.ex, sym, plan.side, float(self.ex.price_to_precision(sym, plan.stop)))
+            if not ok:
+                self._emergency_flatten(sym)
+                raise SafetyError(f"{sym}: stop not confirmed on exchange ({why}); position flattened, KILL written")
         for tp, frac in zip(plan.targets, plan.fractions):
             q = float(self.ex.amount_to_precision(sym, qty * frac))
             if q > 0:
                 self.ex.create_order(sym, "limit", exit_side, q, float(self.ex.price_to_precision(sym, tp)),
                                      params={"reduceOnly": True})
         return str(order.get("id"))
+
+    def _emergency_flatten(self, symbol: str) -> None:
+        try:
+            self.close(symbol, None)
+        finally:
+            self.kill_file.write_text("stop not confirmed on exchange; flattened automatically\n")
 
     def open_symbols(self) -> set[str]:
         return {p["symbol"] for p in self.ex.fetch_positions() if float(p.get("contracts") or 0) > 0}

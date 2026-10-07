@@ -96,7 +96,7 @@ def test_renderers_include_state_and_the_limits():
     svc = DashboardService(lambda s: closed(np.r_[np.full(300, 100.0), [130.0]]), ["BTC/USDT:USDT"], funding_fn=lambda s: 21.0)
     rep = svc.get()
     txt, page = render_text(rep), render_html(rep)
-    for needle in ("BTC", "LONG", "+21%", "last close"):
+    for needle in ("BTC", "LONG", "+21.0%", "last close"):
         assert needle in txt
     assert "Read this first" in page and "not a forecast" in page and "+21%/yr" in page and "viewport" in page
     assert "closed candles only" in page and "rovisional" not in page and "live" not in page.lower().replace("deliver", "")

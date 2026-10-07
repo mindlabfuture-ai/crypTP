@@ -26,6 +26,11 @@ Settings live in `config.yaml`. Copy `.env.example` to `.env` and export the key
 - Use a dedicated sub-account, trade-only API key (no withdrawal), IP whitelist.
 - Create a file named `KILL` in the working directory to stop new entries.
 - Risk limits are deterministic code, never LLM decisions.
+- **Perp guards** (`cryptp/safety.py`, `safety:` in config.yaml), applied by `LiveExecutor` to every live entry. Before the order: leverage
+  cap, stop on the losing side, stop distance <= 50% of the distance to the isolated-margin liquidation price, live price within 0.5% of
+  the plan, adverse funding under 0.05% per 8h, exchange minimum size/notional. The order goes out on isolated margin with the stop
+  attached; if the exchange does not then show that stop, the position is flattened and a `KILL` file is written. Any block is logged,
+  not raised to the webhook. `mmr_pct` is an assumption: check Bybit's maintenance-margin tier per symbol. Untested on live Bybit.
 - No strategy guarantees TP hits. Backtest and paper trade before risking capital.
 
 ## Backtester

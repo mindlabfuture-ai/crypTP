@@ -6,6 +6,7 @@ import time
 
 from .config import load_config
 from .exchange import fetch_ohlcv_df, make_exchange, make_public_exchange
+from .safety import SafetyError
 from .executor import LiveExecutor, PaperExecutor
 from .indicators import atr
 from .planner import build_plan_any
@@ -42,7 +43,7 @@ def cmd_run(cfg, args):
     live = args.live
     ex = make_exchange(cfg, authed=live)
     if live:
-        executor = LiveExecutor(ex)
+        executor = LiveExecutor(ex, getattr(cfg, "safety", None), cfg.risk.max_leverage)
         equity = float(ex.fetch_balance()["USDT"]["total"])
     else:
         executor = PaperExecutor(cfg.risk.paper_equity)
@@ -75,7 +76,11 @@ def cmd_run(cfg, args):
                 continue
             qty = position_size(equity, plan, cfg.risk.risk_per_trade_pct, cfg.risk.max_leverage)
             print(f"ENTER {plan.symbol} qty={qty:.4f} entry={plan.entry} sl={plan.stop} tps={plan.targets}")
-            executor.submit(plan, qty)
+            try:
+                executor.submit(plan, qty)
+            except SafetyError as e:
+                print(f"blocked {plan.symbol} by perp safety check: {e}")
+                continue
             gate.open_symbols.add(plan.symbol)
         time.sleep(args.interval)
 
@@ -208,7 +213,7 @@ def cmd_webhook(cfg, args):
 
     live = args.live
     ex = make_exchange(cfg, authed=live)
-    executor = LiveExecutor(ex) if live else PaperExecutor(cfg.risk.paper_equity)
+    executor = LiveExecutor(ex, getattr(cfg, "safety", None), cfg.risk.max_leverage) if live else PaperExecutor(cfg.risk.paper_equity)
 
     def get_market(sym):
         df, ms, htf = _structure(ex, cfg, sym)

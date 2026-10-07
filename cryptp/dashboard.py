@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+HIGH_FUNDING_PCT = 20.0      # display-only: annualised funding above this makes carrying a long perp expensive
 EXTENDED_PCT = 50.0          # display-only flag, not a trading rule
 
 LIMITS = [
@@ -38,6 +39,7 @@ def trend_state(df: pd.DataFrame, symbol: str, n: int = 200, near_pct: float = 3
                 now: datetime | None = None, funding_ann_pct: float | None = None) -> dict:
     closed = closed_candles(df, now)                              # today's forming candle never gets past this line
     out = dict(symbol=symbol, coin=symbol.split("/")[0], n=n, funding_ann_pct=funding_ann_pct,
+               funding_30d_pct=None if funding_ann_pct is None else funding_ann_pct * 30 / 365,
                as_of=str(closed["ts"].iloc[-1].date()) if len(closed) else None,
                close=float(closed["close"].iloc[-1]) if len(closed) else None)
     if len(closed) < n + 1:
@@ -117,12 +119,13 @@ def _text_rows(coins: list[dict]) -> list[str]:
     out = [f"{'coin':<7}{'state':<8}{'last close':>12}{'SMA':>12}{'dist':>8}{'days':>6}{'since flip':>12}{'30d SMA':>9}{'flips/1y':>9}{'funding/yr':>11}  flags"]
     for s in coins:
         flags = [x for x, on in (("NEAR LINE", s.get("near_line")), ("RUN>=DATA", s.get("run_truncated")),
-                                 ("EXTENDED", (s.get("dist_pct") or 0) > EXTENDED_PCT)) if on]
+                                 ("EXTENDED", (s.get("dist_pct") or 0) > EXTENDED_PCT),
+                                 ("HIGH FUNDING", s["state"] == "LONG" and (s.get("funding_ann_pct") or 0) > HIGH_FUNDING_PCT)) if on]
         price = _f(s["close"], "{:,.4f}") if s["close"] is not None and s["close"] < 10 else _f(s["close"], "{:,.1f}")
         sma = _f(s["sma"], "{:,.4f}") if s["sma"] is not None and s["sma"] < 10 else _f(s["sma"], "{:,.1f}")
         out.append(f"{s['coin']:<7}{s['state']:<8}{price:>12}{sma:>12}{_f(s['dist_pct']):>8}{_f(s['days_in_state'], '{:d}'):>6}"
                    f"{_f(s['since_flip_pct']):>12}{_f(s['sma_slope_30d_pct']):>9}{_f(s['flips_1y'], '{:d}'):>9}"
-                   f"{_f(s.get('funding_ann_pct'), '{:+.0f}%'):>11}  {' '.join(flags)}")
+                   f"{_f(s.get('funding_ann_pct'), '{:+.1f}%'):>11}  {' '.join(flags)}")
     return out
 
 
@@ -162,12 +165,18 @@ def render_html(rep: dict) -> str:
             flags.append(f"Far above the average (over {EXTENDED_PCT:.0f}%): the line offers the least protection here.")
         if s.get("run_truncated"):
             flags.append("This state began before the available data.")
+        fa = s.get("funding_ann_pct")
+        if s["state"] == "LONG" and fa is not None and fa > HIGH_FUNDING_PCT:
+            flags.append(f"Longs pay {fa:.1f}%/yr funding right now (~{fa * 30 / 365:.2f}% per 30 days): spot or a short hold is cheaper than a held perp.")
+        if s["state"] == "FLAT" and fa is not None and fa < -HIGH_FUNDING_PCT:
+            flags.append(f"Shorts pay {-fa:.1f}%/yr funding right now: crowded short side.")
         if s["state"] == "ERROR":
             flags.append("Data error: " + s.get("error", ""))
         rows = [("Distance to SMA", _f(s["dist_pct"])), (f"Days in state", _f(s["days_in_state"], "{:d}")),
                 ("Move since flip", _f(s["since_flip_pct"], "{:+.1f}%", "n/a (fills at next open)" if s.get("days_in_state") == 1 else "-")), ("SMA slope (30d)", _f(s["sma_slope_30d_pct"])),
                 ("Flips in last year", _f(s["flips_1y"], "{:d}")), ("From 1y high", _f(s["from_1y_high_pct"])),
-                ("Perp funding (latest)", _f(s.get("funding_ann_pct"), "{:+.0f}%/yr"))]
+                ("Perp funding (latest)", _f(s.get("funding_ann_pct"), "{:+.1f}%/yr")),
+                ("Long carry, 30 days", _f(s.get("funding_30d_pct"), "{:+.2f}% of notional"))]
         price = "-" if s["close"] is None else (f"{s['close']:,.4f}" if s["close"] < 10 else f"{s['close']:,.1f}")
         sma = "-" if s["sma"] is None else (f"{s['sma']:,.4f}" if s["sma"] < 10 else f"{s['sma']:,.1f}")
         return (

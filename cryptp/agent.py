@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 
+from .safety import SafetyError
 from .dumbmoney import gate_long, gate_short, normalize_mode
 from .planner import SIDES, build_plan
 from .risk import RiskGate, position_size
@@ -61,7 +62,10 @@ class TradeAgent:
         if not ok:
             return self._say(f"{sig.symbol}: blocked by risk gate ({why2})")
         qty = position_size(equity, plan, self.cfg.risk.risk_per_trade_pct, self.cfg.risk.max_leverage)
-        self.executor.submit(plan, qty)
+        try:
+            self.executor.submit(plan, qty)
+        except SafetyError as e:
+            return self._say(f"{sig.symbol}: blocked by perp safety check ({e})")
         self.entry_ts[sig.symbol] = sig.ts
         self.entry_side[sig.symbol] = side
         return self._say(f"{sig.symbol}: ENTER {'LONG' if side == 'buy' else 'SHORT'} qty={qty:.4f} entry={plan.entry} sl={plan.stop} "
