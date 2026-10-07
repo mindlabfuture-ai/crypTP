@@ -104,3 +104,16 @@ def test_webhook_auth_and_flow():
 def test_webhook_requires_secret():
     with pytest.raises(ValueError):
         create_app(None, "")
+
+
+def test_webhook_returns_502_when_exchange_fails():
+    agent, _ = make_agent()
+    agent.get_market = lambda s: (_ for _ in ()).throw(RuntimeError("geo-blocked"))
+
+    async def go():
+        async with TestClient(TestServer(create_app(agent, "s3cret"))) as c:
+            await c.post("/tv", data='{"secret":"s3cret","event":"smc_bull_bos","symbol":"BTCUSDT.P"}')
+            r = await c.post("/tv", data='{"secret":"s3cret","event":"wy_lps","symbol":"BTCUSDT.P"}')
+            assert r.status == 502 and "geo-blocked" in (await r.json())["error"]
+
+    asyncio.run(go())

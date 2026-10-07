@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import logging
 
 from aiohttp import web
 
@@ -25,7 +26,11 @@ def create_app(agent, secret: str) -> web.Application:
             sig = parse_signal(payload)
         except ValueError as e:
             return web.json_response({"error": str(e)}, status=400)
-        msg = await asyncio.to_thread(agent.on_signal, sig)      # ccxt is blocking
+        try:
+            msg = await asyncio.to_thread(agent.on_signal, sig)      # ccxt is blocking
+        except Exception as e:                                       # exchange/network failure
+            logging.exception("signal handling failed: %s", sig)
+            return web.json_response({"error": f"{type(e).__name__}: {str(e)[:200]}"}, status=502)
         return web.json_response({"ok": True, "result": msg})
 
     async def health(_):
