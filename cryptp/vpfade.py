@@ -30,6 +30,8 @@ class VPParams:
     reclaim_back: int = 12             # B2: a close on the other side of the POC within this many bars
     retest_bars: int = 12              # B2: retest must come within this many bars of the reclaim
     sl_buf_atr: float = 0.1
+    min_stop_pct: float = 0.0          # stop is widened (never tightened) to at least this % from the signal close; 0 = off
+    a_vol_mult: float = 0.0            # A: signal-bar volume must exceed this x its 20-bar average; 0 = off
     min_rr: float | None = None        # None = 1.5 for "fade", 2.0 for "discount"
     max_hold: int = 96                 # bars; exit at the close if neither stop nor target is hit
     allow_long: bool = True
@@ -115,6 +117,10 @@ def run_vpfade(df: pd.DataFrame, symbol: str, p: VPParams | None = None, fee_rat
     res = Result(symbol, equity0, bars=n)
     curve = np.empty(n)
 
+    def widen(side, a_stop, close):
+        floor = close * p.min_stop_pct / 100.0
+        return min(a_stop, close - floor) if side > 0 else max(a_stop, close + floor)
+
     def gate(side, a_stop, a_target, close):
         risk = (close - a_stop) if side > 0 else (a_stop - close)
         reward = (a_target - close) if side > 0 else (close - a_target)
@@ -170,12 +176,13 @@ def run_vpfade(df: pd.DataFrame, symbol: str, p: VPParams | None = None, fee_rat
                     lv = volume_profile(H[i - W:i], L[i - W:i], V[i - W:i], p.rows, p.va_pct)
                     if lv:
                         poc, vah, val = lv
-                        if dn_ok and s_c and H[i] > vah + p.ext_atr * a and C[i] < vah:
-                            sl = H[i] + buf * a
+                        vol_a = p.a_vol_mult <= 0 or V[i] > p.a_vol_mult * VSMA[i]
+                        if dn_ok and vol_a and s_c and H[i] > vah + p.ext_atr * a and C[i] < vah:
+                            sl = widen(-1, H[i] + buf * a, C[i])
                             if gate(-1, sl, poc, C[i]):
                                 cands.append((-1, sl, poc))
-                        if up_ok and l_c and L[i] < val - p.ext_atr * a and C[i] > val:
-                            sl = L[i] - buf * a
+                        if up_ok and vol_a and l_c and L[i] < val - p.ext_atr * a and C[i] > val:
+                            sl = widen(1, L[i] - buf * a, C[i])
                             if gate(1, sl, poc, C[i]):
                                 cands.append((1, sl, poc))
         else:
@@ -191,7 +198,7 @@ def run_vpfade(df: pd.DataFrame, symbol: str, p: VPParams | None = None, fee_rat
                     if i > exp or C[i] < lvl - buf * a:
                         r_long = None
                     elif bull and L[i] <= lvl + buf * a and C[i] > lvl:
-                        sl = min(lvl, L[i]) - buf * a
+                        sl = widen(1, min(lvl, L[i]) - buf * a, C[i])
                         if up_ok and gate(1, sl, vah, C[i]):
                             cands.append((1, sl, vah))
                         r_long = None
@@ -200,7 +207,7 @@ def run_vpfade(df: pd.DataFrame, symbol: str, p: VPParams | None = None, fee_rat
                     if i > exp or C[i] > lvl + buf * a:
                         r_short = None
                     elif bear and H[i] >= lvl - buf * a and C[i] < lvl:
-                        sl = max(lvl, H[i]) + buf * a
+                        sl = widen(-1, max(lvl, H[i]) + buf * a, C[i])
                         if dn_ok and gate(-1, sl, val, C[i]):
                             cands.append((-1, sl, val))
                         r_short = None
@@ -210,11 +217,11 @@ def run_vpfade(df: pd.DataFrame, symbol: str, p: VPParams | None = None, fee_rat
                     r_short = (poc, i + p.retest_bars)
                 # B1: pressure candle inside the discount (premium) zone, reaching its outer quarter
                 if bull and val < C[i] < poc and L[i] <= val + p.zone_frac * (poc - val):
-                    sl = min(val, L[i]) - buf * a
+                    sl = widen(1, min(val, L[i]) - buf * a, C[i])
                     if up_ok and gate(1, sl, vah, C[i]):
                         cands.append((1, sl, vah))
                 if bear and poc < C[i] < vah and H[i] >= vah - p.zone_frac * (vah - poc):
-                    sl = max(vah, H[i]) + buf * a
+                    sl = widen(-1, max(vah, H[i]) + buf * a, C[i])
                     if dn_ok and gate(-1, sl, val, C[i]):
                         cands.append((-1, sl, val))
 

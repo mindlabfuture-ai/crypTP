@@ -307,3 +307,37 @@ def test_mirror_symmetry_on_random_data():
     same = sum(1 for x, y in zip(a.trades, b.trades) if x.entry_ts == y.entry_ts and flip[x.side] == y.side)
     # not bit-exact: the profile's POC tie-break and the value-area growth prefer the upper side, so near-ties can differ
     assert abs(len(a.trades) - len(b.trades)) <= max(2, len(a.trades) // 10) and same >= 0.8 * len(a.trades)
+
+
+# ---- exploratory knobs: stop floor and A volume filter --------------------------------------
+
+def test_stop_floor_widens_the_stop_and_the_reward_gate_then_filters():
+    arrs, (poc, vah, val), c = a_short()
+    arrs[2][SIG + 1] = poc - 0.05
+    base = run(arrs).trades[0]
+    assert run(arrs, p={"min_stop_pct": 0.1}).trades[0].stop == pytest.approx(base.stop)   # a floor tighter than the natural stop changes nothing
+    assert run(arrs, p={"min_stop_pct": 2.0}).trades == []                                  # stop 2% away: reward is no longer 1.5x the risk
+    wide = run(arrs, p={"min_stop_pct": 2.0, "min_rr": 0.1}).trades[0]
+    assert wide.stop == pytest.approx(c * 1.02) and wide.side == "sell"
+    assert wide.r == pytest.approx((c - poc) / (c * 1.02 - c), rel=1e-6)                     # R shrinks because risk is larger
+
+
+def test_stop_floor_applies_to_longs_and_never_tightens():
+    arrs, (poc, vah, val), c = b_long_b1()
+    arrs[1][SIG + 1] = vah + 0.05
+    t = run(arrs, p={"mode": "discount", "min_stop_pct": 0.8, "min_rr": 0.1}).trades[0]
+    assert t.side == "buy" and t.stop == pytest.approx(c * (1 - 0.008))
+    base = run(arrs, p={"mode": "discount"}).trades[0]
+    assert t.stop < base.stop                                          # wider: further below the entry
+
+
+def test_a_volume_filter_requires_a_volume_spike_on_the_signal_bar():
+    arrs, (poc, vah, val), c = a_short()
+    arrs[2][SIG + 1] = poc - 0.05
+    assert len(run(arrs, p={"a_vol_mult": 0.5}).trades) == 1
+    assert run(arrs, p={"a_vol_mult": 5.0}).trades == []                # the signal bar's volume is ~1.5x the average, not 5x
+
+
+def test_defaults_leave_the_exploratory_knobs_off():
+    p = VPParams()
+    assert p.min_stop_pct == 0.0 and p.a_vol_mult == 0.0

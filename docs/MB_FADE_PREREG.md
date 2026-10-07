@@ -113,3 +113,35 @@ Out-of-sample is looked at once, after selection, and never used to choose. All 
 **"Promising" means all of:** the selected config has OOS average R > 0 on the original coins, AND average R > 0 pooled on the held-out coins with at least 150 trades.
 Anything less is "no evidence", and no further parameters are tried this round. Even "promising" is not "validated": 16 candidates x 2 rule sets were looked at, the cut date is
 one split, and it would still need a clean pre-registration and a forward test on data that does not exist yet.
+
+---
+## Results, exploratory round 1, stage 1 (appended 2026-10-07; the plan above is unchanged)
+Original 9 coins, 15m, net of costs, cut 2026-03-02. All 16 candidates, average R per trade (trades), sorted by in-sample:
+
+| candidate | in-sample | out-of-sample | median stop |
+|---|---|---|---|
+| A stop>=2% high rr-3.0 | +1.308 (2) | n/a | 3.7% |
+| A stop>=1% high rr-3.0 | +0.496 (3) | -1.128 (1) | 1.8% |
+| **A stop>=1% base rr-3.0 (selected for A)** | **+0.043 (674)** | **-0.082 (203)** | 1.0% |
+| A stop>=2% base rr-3.0 | -0.001 (141) | -0.176 (36) | 2.0% |
+| A stop>=2% base rr-base | -0.007 (789) | -0.086 (224) | 2.0% |
+| A stop>=1% base rr-base | -0.056 (2,391) | -0.135 (767) | 1.0% |
+| B stop>=2% base rr-3.0 **(selected for B)** | -0.112 (681) | -0.299 (125) | 2.0% |
+| B stop>=2% base rr-base | -0.155 (1,710) | -0.125 (401) | 2.0% |
+| B stop>=1% base rr-base | -0.185 (3,922) | -0.150 (1,177) | 1.0% |
+| B stop>=1% base rr-3.0 | -0.230 (2,110) | -0.194 (555) | 1.1% |
+| B "high" (4 candidates) | -0.25 to -0.42 (72-429) | -0.32 to -0.82 (12-107) | 1.2-2.0% |
+| A "high" (remaining 2) | -0.29 (47), -0.30 (20) | -0.36 (23), -0.18 (10) | 1.3-2.0% |
+
+Selected by in-sample only (>= 200 in-sample trades): **A stop>=1% base rr-3.0** (in-sample +0.043, out-of-sample **-0.082**, lower 2 SE -0.36) and
+**B stop>=2% base rr-3.0** (in-sample -0.112, out-of-sample **-0.299**). Their +F twins: A+F -0.360 / -0.193 on 94 / 26 trades; B+F -0.143 / +0.074 on 118 / 12 trades (too few to read).
+Zero-cost diagnostic: A +0.177 in-sample, +0.053 out-of-sample; B -0.045, -0.233.
+
+**Reading it.**
+- Wider stops did what they should to costs: the cost drag fell from about 0.33R per trade to about 0.13R (A: +0.177 gross vs +0.043 net in-sample), because costs are now a smaller share of the risk.
+  But the gross signal is about zero out-of-sample (+0.05R), so there is nothing for the lower costs to protect.
+- "Higher quality" filters mostly produce too few trades to evaluate (A "high": 2-47 in-sample trades). Where there are enough (B "high", 72-429 trades) they are worse than the base version, not better.
+  The two candidates ranked first have 2 and 3 trades: noise.
+- Only 1 of 16 candidates has a positive in-sample average R at >= 200 trades (+0.043, i.e. about zero), and it is negative out-of-sample: what best-of-16 selection on noise looks like.
+- **Verdict under the pre-declared rule: NO EVIDENCE.** The selected configs fail "out-of-sample average R > 0" on the original coins, so the held-out-coins stage cannot make either one "promising";
+  it is still run (stage 2, appended below when done) as an independent check, and no further parameters will be tried this round.
