@@ -43,6 +43,18 @@ Bar-by-bar replay of the same analyzer, planner, risk gate and paper executor th
   cannot run here. To test those, export the alert history and add it as a signal source.
 - Fetched candles are cached in `data/`. `--synthetic` is a pipeline check only; its results mean nothing.
 
+## Dumb Money filter (optional)
+`cryptp/dumbmoney.py` is a Python port of the signal logic of *Dumb Money Concepts* by theUltimator5
+(MPL 2.0, notice kept in the file). That script has no alerts, so it can't be fed in over a webhook; the
+logic is computed from candles instead, so it also backtests. `dumb_money.mode` in `config.yaml`:
+`off` (default), `veto` (no longs into FOMO / herd exhaustion / chase / index above 70) or
+`require` (veto, and also need a recent panic flush, hopelessness or index below 30).
+The port is not byte-identical to Pine (indicator seeding differs slightly).
+
+## Benchmarks
+`python -m cryptp popular --csv FILE` replays two popular ChartArt strategies (Bollinger+RSI, MACD+SMA200)
+with the same costs and split, in their original long/short form and a long-only form, for comparison.
+
 ## TradingView
 See docs/TRADINGVIEW.md: `python -m cryptp webhook` receives Wyckoff and Smart Money Concepts alerts.
 

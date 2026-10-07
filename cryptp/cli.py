@@ -102,9 +102,12 @@ def cmd_backtest(cfg, args):
             _os.makedirs("data", exist_ok=True)
             df.to_csv(cache, index=False)
     cfg.risk.paper_equity = args.equity
-    res = run_backtest(df, args.symbol, cfg, fee_rate=args.fee / 100, slippage_bps=args.slip)
+    if args.stop_mult is not None:
+        cfg.plan.min_stop_cost_mult = args.stop_mult
+    res = run_backtest(df, args.symbol, cfg, fee_rate=args.fee / 100, slippage_bps=args.slip,
+                       dm_mode=args.dm)
     print(f"{args.symbol} {tf}  {df['ts'].iloc[0]:%Y-%m-%d} -> {df['ts'].iloc[-1]:%Y-%m-%d}  "
-          f"{len(df)} bars  fee {args.fee}%/side  slippage {args.slip}bps  start equity {args.equity}")
+          f"{len(df)} bars  fee {args.fee}%/side  slippage {args.slip}bps  start equity {args.equity}  dumb-money {args.dm or cfg.dumb_money.mode}")
     print(format_summary("ALL", summarize(res.trades, res.equity0, res.equity)))
     ins, oos, cut = split_trades(res.trades, args.split, df)
     print(format_summary(f"in-sample", summarize(ins, res.equity0)))
@@ -116,6 +119,28 @@ def cmd_backtest(cfg, args):
         import pandas as pd
         pd.DataFrame([{**t.__dict__, "r": t.r} for t in res.trades]).to_csv(args.out, index=False)
         print(f"trades written to {args.out}")
+
+
+def cmd_popular(cfg, args):
+    """Benchmark the two ChartArt strategies on the same data and costs."""
+    from .backtest import load_csv, synthetic_ohlcv
+    from .popular import STRATEGIES, format_fills, run_reversal, summarize_fills
+
+    df = synthetic_ohlcv(seed=1) if args.synthetic else load_csv(args.csv)
+    cut = df["ts"].iloc[int(len(df) * args.split)]
+    print(f"{args.csv or 'synthetic'}  {df['ts'].iloc[0]:%Y-%m-%d} -> {df['ts'].iloc[-1]:%Y-%m-%d}  {len(df)} bars  "
+          f"fee {args.fee}%/side  slippage {args.slip}bps  100% equity, 1x")
+    for name, fn in STRATEGIES.items():
+        ls, ss = fn(df)
+        for long_only in (False, True):
+            r = run_reversal(df, ls, ss, name, long_only, args.fee / 100, args.slip, args.equity)
+            tag = f"{name}/{'long' if long_only else 'both'}"
+            print(format_fills(tag, summarize_fills(r.trades, r.equity0, r.equity)))
+            ins = [t for t in r.trades if t.entry_ts < cut]
+            oos = [t for t in r.trades if t.entry_ts >= cut]
+            print("   " + format_fills("in-sample", summarize_fills(ins, r.equity0)))
+            print("   " + format_fills("out-of-sample", summarize_fills(oos, r.equity0)))
+    print(f"buy & hold over the same period: {r.buy_hold_pct:+.1f}%")
 
 
 def cmd_webhook(cfg, args):
@@ -139,9 +164,16 @@ def cmd_webhook(cfg, args):
         c = fetch_ohlcv_df(ex, sym, cfg.structure.timeframe, 2).iloc[-1]
         return float(c["high"]), float(c["low"])
 
+    def get_dm(sym):
+        from .dumbmoney import compute
+        d = cfg.dumb_money
+        f = compute(fetch_ohlcv_df(ex, sym, cfg.structure.timeframe, 300), d.euphoria_bars,
+                    d.capitulation_bars, d.index_hot, d.index_cold)
+        return f.iloc[-2]                     # last CLOSED candle (the newest one is still forming)
+
     equity = (lambda: float(ex.fetch_balance()["USDT"]["total"])) if live else (lambda: executor.equity)
     agent = TradeAgent(cfg, SignalBook(cfg.signals, os.environ.get("CRYPTP_DB")), RiskGate(cfg.risk), executor, get_market, equity,
-                       get_candle, live)
+                       get_candle, live, get_dm, cfg.dumb_money.mode)
 
     async def ticker(_app):
         async def loop():
@@ -178,12 +210,21 @@ def main():
     b.add_argument("--slip", type=float, default=2.0, help="stop-exit slippage in bps")
     b.add_argument("--equity", type=float, default=1000.0)
     b.add_argument("--split", type=float, default=0.7)
+    b.add_argument("--dm", choices=["off", "veto", "require"], help="dumb-money filter (default: config)")
+    b.add_argument("--stop-mult", type=float, help="override plan.min_stop_cost_mult (0 = no fee-aware stop filter)")
     b.add_argument("--out")
+    pp = sub.add_parser("popular")
+    pp.add_argument("--csv")
+    pp.add_argument("--synthetic", action="store_true")
+    pp.add_argument("--fee", type=float, default=0.055)
+    pp.add_argument("--slip", type=float, default=2.0)
+    pp.add_argument("--equity", type=float, default=1000.0)
+    pp.add_argument("--split", type=float, default=0.7)
     w = sub.add_parser("webhook")
     w.add_argument("--live", action="store_true")
     args = p.parse_args()
     cfg = load_config(args.config)
-    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest}[args.cmd](cfg, args)
+    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":

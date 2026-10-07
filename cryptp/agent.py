@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 
+from .dumbmoney import gate_long
 from .planner import build_plan
 from .risk import RiskGate, position_size
 from .signals import SMC_BULL, WY_LONG, Signal, SignalBook
@@ -10,9 +11,10 @@ from .signals import SMC_BULL, WY_LONG, Signal, SignalBook
 
 class TradeAgent:
     def __init__(self, cfg, book: SignalBook, gate: RiskGate, executor, get_market, get_equity,
-                 get_candle=None, live: bool = False):
+                 get_candle=None, live: bool = False, get_dm=None, dm_mode: str = "off"):
         self.cfg, self.book, self.gate, self.executor = cfg, book, gate, executor
         self.get_market, self.get_equity, self.get_candle, self.live = get_market, get_equity, get_candle, live
+        self.get_dm, self.dm_mode = get_dm, dm_mode
         self.entry_ts: dict[str, float] = {}
         self.log: list[str] = []
         self._day = None
@@ -43,6 +45,10 @@ class TradeAgent:
         plan = build_plan(sig.symbol, price, atr_val, ms, htf_trend, self.cfg.plan)
         if not plan:
             return self._say(f"{sig.symbol}: armed but no valid plan (structure/stop/room)")
+        if self.get_dm and self.dm_mode != "off":
+            ok, why_dm = gate_long(self.get_dm(sig.symbol), self.dm_mode)
+            if not ok:
+                return self._say(f"{sig.symbol}: armed but blocked by dumb-money filter ({why_dm})")
         equity = self.get_equity()
         ok, why2 = self.gate.check(plan, equity)
         if not ok:

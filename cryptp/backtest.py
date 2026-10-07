@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from .dumbmoney import compute as dm_compute
+from .dumbmoney import gate_long
 from .executor import PaperExecutor
 from .indicators import atr
 from .planner import build_plan
@@ -69,7 +71,8 @@ def htf_trend_series(df: pd.DataFrame, htf: str, left: int, right: int):
 
 
 def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
-                 slippage_bps: float = 2.0, cooldown_bars: int = 8, warmup: int = WINDOW) -> Result:
+                 slippage_bps: float = 2.0, cooldown_bars: int = 8, warmup: int = WINDOW,
+                 dm_mode: str | None = None) -> Result:
     df = df.reset_index(drop=True)
     n = len(df)
     s, pcfg = cfg.structure, cfg.plan
@@ -77,6 +80,13 @@ def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
     trends, htf_done = htf_trend_series(df, s.htf, s.swing_left, s.swing_right)
     close_times = (df["ts"] + entry_delta).to_numpy()
     htf_idx = np.searchsorted(htf_done, close_times, side="right") - 1      # last COMPLETED htf bar
+
+    dmc = getattr(cfg, "dumb_money", None)
+    dm_mode = dm_mode if dm_mode is not None else (dmc.mode if dmc else "off")
+    dm = None
+    if dm_mode != "off":
+        dm = dm_compute(df, dmc.euphoria_bars, dmc.capitulation_bars, dmc.index_hot, dmc.index_cold)
+    res_blocked = 0
 
     slip = slippage_bps / 10_000
     ex = PaperExecutor(cfg.risk.paper_equity, fee_rate=fee_rate, slippage=slip)
@@ -134,6 +144,10 @@ def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
         htf_trend = trends[htf_idx[i]] if htf_idx[i] >= 0 else "range"
         plan = build_plan(symbol, float(row["close"]), a, ms, htf_trend, pcfg)
         valid = plan is not None
+        if valid and dm is not None:
+            ok, _ = gate_long(dm.iloc[i], dm_mode)       # crowd filter is part of "valid": a vetoed
+            if not ok:                                   # setup is taken once the crowd cools off
+                valid = False
         if valid and not prev_valid and symbol not in ex.positions and i > cooldown_until:
             pending = plan
         prev_valid = valid

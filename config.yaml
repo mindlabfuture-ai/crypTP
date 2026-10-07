@@ -39,3 +39,11 @@ signals:
   wy_ttl_min: 240          # a Wyckoff trigger stays valid this long
   smc_ttl_min: 1440        # an SMC swing bias stays valid this long
   require_smc: true        # long needs a bullish SMC swing bias (CHoCH/BOS) too
+
+dumb_money:
+  mode: off                # off | veto (block longs into crowd euphoria) | require (veto + need capitulation)
+                           # default off: no measurable benefit in the 1H backtest (see README)
+  euphoria_bars: 6
+  capitulation_bars: 12
+  index_hot: 70
+  index_cold: 30
