@@ -92,3 +92,24 @@ turn "about zero" into a loss. A 27% win rate against a 1.5:1 minimum reward:ris
 alts over two years, net or gross, and that the macro-filter proxy helps a little but not enough. It does NOT show his discretionary trading has no edge:
 trade selection, reading confluence by eye, the "wait for the crash to pause" rule, real dominance data and the 98-298x sizing were not modelled, and his posted wins
 are a handful of chosen trades. The pre-registered conclusion stands: no evidence of an edge. Parameters were not tuned after seeing this; any variant run from here is exploratory.
+
+---
+## Addendum 2026-10-07 (EXPLORATORY round 1, written BEFORE it was run): wider stops, fewer and higher-quality setups
+Motivated by the result above (about zero before costs, costs ~0.3R per trade because stops were only 0.5-0.8% away). This is a data-driven follow-up, so it is
+labelled exploratory and judged by stricter rules than a fresh pre-registration, not looser ones.
+
+**Fixed grid (16 candidates, all net of costs, no macro filter):** rule set {A, B} x stop floor {1%, 2%} x quality {base, high} x min reward:risk {base, 3.0}.
+- *Stop floor:* the stop is widened, never tightened, so it sits at least X% from the signal close; the reward:risk gate is applied AFTER widening, so a wide stop
+  only trades when the target is far enough. Fewer trades is the intended effect.
+- *Quality "high":* A: poke >= 1.0 ATR beyond VAH/VAL (was 0.25), rejection wick >= 60% of range (was 40%), signal-bar volume > 1.5x its 20-bar average (was unused).
+  B: pressure-candle volume > 2.0x average (was 1.0x), body >= 65% of range (was 50%), close in the outer 20% (was 30%), low in the outer 15% of the zone (was 25%).
+- *min reward:risk "base":* 1.5 for A, 2.0 for B (as before); the alternative is 3.0.
+
+**Selection rule:** per rule set, the candidate with the highest IN-SAMPLE (before 2026-03-02) average R among those with at least 200 in-sample trades.
+Out-of-sample is looked at once, after selection, and never used to choose. All 16 candidates' in-sample AND out-of-sample numbers are printed so the multiplicity is visible.
+**Held-out coins:** six coins that were NOT in the original universe (LTC, DOT, BCH, ATOM, UNI, APT) are pulled and used only to run the two selected configs, once.
+**Follow-ups on the selected configs only:** the same config with the macro filter (+F), and the zero-cost diagnostic.
+
+**"Promising" means all of:** the selected config has OOS average R > 0 on the original coins, AND average R > 0 pooled on the held-out coins with at least 150 trades.
+Anything less is "no evidence", and no further parameters are tried this round. Even "promising" is not "validated": 16 candidates x 2 rule sets were looked at, the cut date is
+one split, and it would still need a clean pre-registration and a forward test on data that does not exist yet.
