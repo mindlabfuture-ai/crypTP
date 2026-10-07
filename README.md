@@ -27,5 +27,8 @@ Settings live in `config.yaml`. Copy `.env.example` to `.env` and export the key
 - Risk limits are deterministic code, never LLM decisions.
 - No strategy guarantees TP hits. Backtest and paper trade before risking capital.
 
+## TradingView
+See docs/TRADINGVIEW.md: `python -m cryptp webhook` receives Wyckoff and Smart Money Concepts alerts.
+
 ## Not built yet
-Backtester, Claude analyst layer (news/sentiment narrative), TradingView webhook receiver, persistent trade log, WebSocket feeds.
+Backtester, Claude analyst layer (news/sentiment narrative), persistent trade log, WebSocket feeds.

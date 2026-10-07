@@ -27,6 +27,19 @@ class PaperExecutor:
         self.positions[plan.symbol] = Position(plan, qty, qty, plan.stop)
         return f"paper-{plan.symbol}"
 
+    def open_symbols(self) -> set[str]:
+        return set(self.positions)
+
+    def close(self, symbol: str, price: float | None) -> float:
+        pos = self.positions.pop(symbol, None)
+        if not pos or price is None:
+            return 0.0
+        pnl = (price - pos.plan.entry) * pos.remaining + 0.0
+        pos.realized += pnl
+        self.equity += pnl
+        self.closed_pnl.append(pos.realized)
+        return pnl
+
     def on_candle(self, symbol: str, high: float, low: float) -> float:
         """Advance a position through one candle. Stop is checked first (conservative)."""
         pos = self.positions.get(symbol)
@@ -74,3 +87,14 @@ class LiveExecutor:
                 self.ex.create_order(sym, "limit", "sell", q, float(self.ex.price_to_precision(sym, tp)),
                                      params={"reduceOnly": True})
         return str(order.get("id"))
+
+    def open_symbols(self) -> set[str]:
+        return {p["symbol"] for p in self.ex.fetch_positions() if float(p.get("contracts") or 0) > 0}
+
+    def close(self, symbol: str, price: float | None) -> float:
+        for p in self.ex.fetch_positions([symbol]):
+            qty = float(p.get("contracts") or 0)
+            if qty > 0:
+                self.ex.cancel_all_orders(symbol)
+                self.ex.create_order(symbol, "market", "sell", qty, params={"reduceOnly": True})
+        return 0.0      # realized PnL is tracked by the exchange; daily limit uses balance in live mode

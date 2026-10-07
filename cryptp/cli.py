@@ -80,6 +80,47 @@ def cmd_run(cfg, args):
         time.sleep(args.interval)
 
 
+def cmd_webhook(cfg, args):
+    import asyncio
+
+    from aiohttp import web
+
+    from .agent import TradeAgent
+    from .signals import SignalBook
+    from .webhook import create_app
+
+    live = args.live
+    ex = make_exchange(cfg, authed=live)
+    executor = LiveExecutor(ex) if live else PaperExecutor(cfg.risk.paper_equity)
+
+    def get_market(sym):
+        df, ms, htf = _structure(ex, cfg, sym)
+        return float(df["close"].iloc[-1]), float(atr(df).iloc[-1]), ms, htf.trend
+
+    def get_candle(sym):
+        c = fetch_ohlcv_df(ex, sym, cfg.structure.timeframe, 2).iloc[-1]
+        return float(c["high"]), float(c["low"])
+
+    equity = (lambda: float(ex.fetch_balance()["USDT"]["total"])) if live else (lambda: executor.equity)
+    agent = TradeAgent(cfg, SignalBook(cfg.signals), RiskGate(cfg.risk), executor, get_market, equity,
+                       get_candle, live)
+
+    async def ticker(_app):
+        async def loop():
+            while True:
+                await asyncio.to_thread(agent.tick)
+                await asyncio.sleep(60)
+        task = asyncio.create_task(loop())
+        yield
+        task.cancel()
+
+    app = create_app(agent, os.environ.get("TV_WEBHOOK_SECRET", ""))
+    app.cleanup_ctx.append(ticker)
+    port = int(os.environ.get("PORT", cfg.signals.port))
+    print(f"mode={'LIVE' if live else 'PAPER'} testnet={cfg.exchange.testnet} port={port}")
+    web.run_app(app, port=port)
+
+
 def main():
     p = argparse.ArgumentParser(prog="cryptp")
     p.add_argument("--config", default="config.yaml")
@@ -90,9 +131,11 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("--live", action="store_true")
     r.add_argument("--interval", type=int, default=900)
+    w = sub.add_parser("webhook")
+    w.add_argument("--live", action="store_true")
     args = p.parse_args()
     cfg = load_config(args.config)
-    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run}[args.cmd](cfg, args)
+    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":

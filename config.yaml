@@ -31,3 +31,9 @@ risk:
   max_daily_loss_pct: 2.0
   max_open_positions: 3
   max_leverage: 3
+
+signals:
+  port: 8080
+  wy_ttl_min: 240          # a Wyckoff trigger stays valid this long
+  smc_ttl_min: 1440        # an SMC swing bias stays valid this long
+  require_smc: true        # long needs a bullish SMC swing bias (CHoCH/BOS) too
