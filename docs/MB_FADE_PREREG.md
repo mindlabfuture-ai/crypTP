@@ -65,3 +65,30 @@ per-coin avg R, long/short split, median stop distance. Anything run after this 
 **Not modelled.** His "wait for the crash momentum to fade" rule (no clean mechanical form), funding costs, the real dominance indices, discretionary
 patterns (Adam & Eve, FVG), and any leverage above 3x. Because risk is 1% per trade with a 3x cap, liquidation never binds in this test; his 98-298x sizing
 is deliberately not replicated.
+
+---
+## Results (appended 2026-10-07 after the run; the pre-registered text above is unchanged)
+Run: `PYTHONPATH=. python tools/run_vpfade.py data`, OKX perps 15m, 2024-10-07 to 2026-10-07 (GRASS from 2024-10-28), 9 coins, ~70k bars each, no gaps.
+Common calendar cut 2026-03-02 (in-sample before, out-of-sample after). Net of costs (0.055%/side + 2 bps slippage). Average R per trade (trades):
+
+| config | pooled | in-sample | out-of-sample | win % | verdict |
+|---|---|---|---|---|---|
+| A (fade) | -0.286 (6,659) | -0.242 (4,496) | -0.379 (2,163) | 27 | **FAIL** |
+| A+F | -0.226 (1,140) | -0.207 (838) | -0.278 (302) | 28 | **FAIL** |
+| B (discount + pressure) | -0.256 (7,478) | -0.245 (5,304) | -0.284 (2,174) | 23 | **FAIL** |
+| B+F | -0.184 (1,647) | -0.204 (1,269) | -0.115 (378) | 24 | **FAIL** |
+
+All four fail "pooled avg R > 0" and both half criteria. The filter did beat its unfiltered twin out-of-sample (the only criterion it met), but it
+improved a losing result, it did not produce a winning one. The pooled mean minus 2 SE is below zero for every config (-0.33, -0.34, -0.30, -0.28).
+Per-coin: negative on nearly every coin for A and B; the few positive coins under +F (HBAR 0.07 and NEAR 0.05 on A+F; GRASS 0.05 on B+F) are on 108-191 trades each
+and are not distinguishable from noise across nine coins and four configs.
+
+**Diagnostic (zero fees and slippage, NOT a pass criterion; the repo's usual check of whether costs or the idea is the problem):**
+A +0.045R pooled (lower 2 SE -0.002), A+F +0.094R (n=1,140, lower 2 SE -0.023), B -0.042R, B+F +0.036R. So before costs the signal is about zero
+(A's shorts +0.10R vs longs -0.00R is the only side-level hint), and the costs, about 0.3R per trade because the median stop is only 0.5-0.8% away,
+turn "about zero" into a loss. A 27% win rate against a 1.5:1 minimum reward:risk needs about 40% to break even.
+
+**What this does and does not show.** It shows this mechanical reading of the method (24h profile, fixed thresholds, no discretion) has no edge on 9 liquid
+alts over two years, net or gross, and that the macro-filter proxy helps a little but not enough. It does NOT show his discretionary trading has no edge:
+trade selection, reading confluence by eye, the "wait for the crash to pause" rule, real dominance data and the 98-298x sizing were not modelled, and his posted wins
+are a handful of chosen trades. The pre-registered conclusion stands: no evidence of an edge. Parameters were not tuned after seeing this; any variant run from here is exploratory.
