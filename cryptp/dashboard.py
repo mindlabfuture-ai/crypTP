@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+EXTENDED_PCT = 50.0          # display-only flag, not a trading rule
+
 LIMITS = [
     "A trend state, not a forecast: the filter lags, whipsaws near the line, and lost money in fast crashes (e.g. 2025).",
     "Backtest (docs/TREND_PREREG.md): improved return per unit of drawdown on 5 of 5 coins but missed the pre-registered "
@@ -67,27 +69,28 @@ def trend_state(df: pd.DataFrame, symbol: str, n: int = 200, near_pct: float = 3
     return out
 
 
-def build_report(states: list[dict], n: int = 200) -> dict:
+def build_report(states: list[dict], n: int = 200, watch: list[dict] | None = None) -> dict:
     ok = [s for s in states if s["state"] in ("LONG", "FLAT")]
     longs = sum(s["state"] == "LONG" for s in ok)
     share = longs / len(ok) if ok else None
     regime = None if share is None else ("RISK-ON" if share >= 0.8 else "RISK-OFF" if share <= 0.2 else "MIXED")
-    return dict(generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), sma=n, coins=states,
+    return dict(generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), sma=n, coins=states, watch=watch or [],
                 breadth=dict(long=longs, total=len(ok), regime=regime), limits=LIMITS)
 
 
 class DashboardService:
     """Fetches daily candles per symbol, caches the report for `ttl` seconds."""
 
-    def __init__(self, fetch, symbols, n: int = 200, near_pct: float = 3.0, ttl: int = 600, funding_fn=None):
+    def __init__(self, fetch, symbols, n: int = 200, near_pct: float = 3.0, ttl: int = 600, funding_fn=None, watch=()):
         self.fetch, self.symbols, self.n, self.near_pct, self.ttl, self.funding_fn = fetch, list(symbols), n, near_pct, ttl, funding_fn
+        self.watch = list(watch)                              # extra coins: shown, but NOT counted in the breadth regime
         self._lock, self._cache, self._at = threading.Lock(), None, 0.0
 
     def get(self, force: bool = False) -> dict:
         with self._lock:
             if force or self._cache is None or time.time() - self._at > self.ttl:
-                states = []
-                for sym in self.symbols:
+                states, watch = [], []
+                for sym in self.symbols + self.watch:
                     try:
                         df = self.fetch(sym)
                         fund = None
@@ -96,13 +99,13 @@ class DashboardService:
                                 fund = self.funding_fn(sym)
                             except Exception:
                                 fund = None
-                        states.append(trend_state(df, sym, self.n, self.near_pct, funding_ann_pct=fund))
+                        (states if sym in self.symbols else watch).append(trend_state(df, sym, self.n, self.near_pct, funding_ann_pct=fund))
                     except Exception as e:                             # one bad symbol must not blank the page
-                        states.append(dict(symbol=sym, coin=sym.split("/")[0], state="ERROR", error=f"{type(e).__name__}: {str(e)[:120]}",
+                        (states if sym in self.symbols else watch).append(dict(symbol=sym, coin=sym.split("/")[0], state="ERROR", error=f"{type(e).__name__}: {str(e)[:120]}",
                                            close=None, sma=None, dist_pct=None, days_in_state=None, since_flip_pct=None,
                                            near_line=False, sma_slope_30d_pct=None, flips_1y=None,
                                            from_1y_high_pct=None, funding_ann_pct=None, as_of=None, run_truncated=False, n=self.n))
-                self._cache, self._at = build_report(states, self.n), time.time()
+                self._cache, self._at = build_report(states, self.n, watch), time.time()
             return self._cache
 
 
@@ -110,20 +113,26 @@ def _f(v, fmt="{:+.1f}%", none="-"):
     return none if v is None or (isinstance(v, float) and np.isnan(v)) else fmt.format(v)
 
 
+def _text_rows(coins: list[dict]) -> list[str]:
+    out = [f"{'coin':<7}{'state':<8}{'last close':>12}{'SMA':>12}{'dist':>8}{'days':>6}{'since flip':>12}{'30d SMA':>9}{'flips/1y':>9}{'funding/yr':>11}  flags"]
+    for s in coins:
+        flags = [x for x, on in (("NEAR LINE", s.get("near_line")), ("RUN>=DATA", s.get("run_truncated")),
+                                 ("EXTENDED", (s.get("dist_pct") or 0) > EXTENDED_PCT)) if on]
+        price = _f(s["close"], "{:,.4f}") if s["close"] is not None and s["close"] < 10 else _f(s["close"], "{:,.1f}")
+        sma = _f(s["sma"], "{:,.4f}") if s["sma"] is not None and s["sma"] < 10 else _f(s["sma"], "{:,.1f}")
+        out.append(f"{s['coin']:<7}{s['state']:<8}{price:>12}{sma:>12}{_f(s['dist_pct']):>8}{_f(s['days_in_state'], '{:d}'):>6}"
+                   f"{_f(s['since_flip_pct']):>12}{_f(s['sma_slope_30d_pct']):>9}{_f(s['flips_1y'], '{:d}'):>9}"
+                   f"{_f(s.get('funding_ann_pct'), '{:+.0f}%'):>11}  {' '.join(flags)}")
+    return out
+
+
 def render_text(rep: dict) -> str:
     b = rep["breadth"]
     lines = [f"Daily trend dashboard (SMA{rep['sma']}, closed daily candles)  {rep['generated_at']}",
-             f"Breadth: {b['long']}/{b['total']} above their SMA  ->  {b['regime']}", "",
-             f"{'coin':<5}{'state':<8}{'last close':>12}{'SMA':>12}{'dist':>8}{'days':>6}{'since flip':>12}{'30d SMA':>9}{'flips/1y':>9}{'funding/yr':>11}  flags"]
-    for s in rep["coins"]:
-        flags = [x for x, on in (("NEAR LINE", s.get("near_line")), ("RUN>=DATA", s.get("run_truncated"))) if on]
-        price = _f(s["close"], "{:,.4f}") if s["close"] is not None and s["close"] < 10 else _f(s["close"], "{:,.1f}")
-        sma = _f(s["sma"], "{:,.4f}") if s["sma"] is not None and s["sma"] < 10 else _f(s["sma"], "{:,.1f}")
-        lines.append(f"{s['coin']:<5}{s['state']:<8}{price:>12}{sma:>12}{_f(s['dist_pct']):>8}{_f(s['days_in_state'], '{:d}'):>6}"
-                     f"{_f(s['since_flip_pct']):>12}{_f(s['sma_slope_30d_pct']):>9}{_f(s['flips_1y'], '{:d}'):>9}"
-                     f"{_f(s.get('funding_ann_pct'), '{:+.0f}%'):>11}  {' '.join(flags)}")
-    lines += [""] + ["- " + t for t in rep["limits"]]
-    return "\n".join(lines)
+             f"Breadth: {b['long']}/{b['total']} above their SMA  ->  {b['regime']}", ""] + _text_rows(rep["coins"])
+    if rep.get("watch"):
+        lines += ["", "Watchlist (spot symbols; NOT counted in breadth; higher volatility, highly correlated)"] + _text_rows(rep["watch"])
+    return "\n".join(lines + [""] + ["- " + t for t in rep["limits"]])
 
 
 _CSS = """
@@ -137,7 +146,7 @@ main{max-width:980px;margin:0 auto;padding:20px 16px 40px}h1{font-size:20px;marg
 .coin{font-weight:650;font-size:17px}.chip{font-size:12px;font-weight:650;padding:2px 10px;border-radius:99px}.LONG{background:var(--longbg);color:var(--long)}.FLAT{background:var(--flatbg);color:var(--flat)}
 .ERROR,.INSUFFICIENT_HISTORY{background:var(--line);color:var(--mute)}.price{font-size:22px;margin:6px 0 2px}dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:8px 0 0;font-size:13px}
 dt{color:var(--mute)}dd{margin:0;text-align:right}.flags{margin-top:8px;font-size:12px;color:var(--warn)}.flags span{margin-right:8px}
-.limits{margin-top:20px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:13px;color:var(--mute)}.limits li{margin:4px 0}
+h2{font-size:16px;margin:24px 0 4px}.limits{margin-top:20px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:13px;color:var(--mute)}.limits li{margin:4px 0}
 footer{margin-top:14px;font-size:12px;color:var(--mute)}
 """
 
@@ -145,11 +154,12 @@ footer{margin-top:14px;font-size:12px;color:var(--mute)}
 def render_html(rep: dict) -> str:
     e = html.escape
     b = rep["breadth"]
-    cards = []
-    for s in rep["coins"]:
+    def card(s):
         flags = []
         if s.get("near_line"):
             flags.append("Near the line: flips (whipsaws) are most likely here.")
+        if (s.get("dist_pct") or 0) > EXTENDED_PCT:
+            flags.append(f"Far above the average (over {EXTENDED_PCT:.0f}%): the line offers the least protection here.")
         if s.get("run_truncated"):
             flags.append("This state began before the available data.")
         if s["state"] == "ERROR":
@@ -160,12 +170,14 @@ def render_html(rep: dict) -> str:
                 ("Perp funding (latest)", _f(s.get("funding_ann_pct"), "{:+.0f}%/yr"))]
         price = "-" if s["close"] is None else (f"{s['close']:,.4f}" if s["close"] < 10 else f"{s['close']:,.1f}")
         sma = "-" if s["sma"] is None else (f"{s['sma']:,.4f}" if s["sma"] < 10 else f"{s['sma']:,.1f}")
-        cards.append(
+        return (
             f'<section class="card"><div class="top"><span class="coin">{e(s["coin"])}</span>'
             f'<span class="chip {e(s["state"])}">{e(s["state"].replace("_", " "))}</span></div>'
             f'<div class="price">{e(price)}</div><div class="sub" style="margin:0">last close</div><div class="sub" style="margin:0">SMA{rep["sma"]}: {e(sma)}</div>'
             f'<dl>{"".join(f"<dt>{e(k)}</dt><dd>{e(v)}</dd>" for k, v in rows)}</dl>'
             f'<div class="flags">{"".join(f"<span>{e(x)}</span><br>" for x in flags)}</div></section>')
+    cards = [card(s) for s in rep["coins"]]
+    watch_cards = [card(s) for s in rep.get("watch", [])]
     regime = e(b["regime"] or "n/a")
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<meta http-equiv="refresh" content="600"><title>Daily Trend Dashboard</title><style>{_CSS}</style></head><body><main>'
@@ -173,5 +185,9 @@ def render_html(rep: dict) -> str:
             f'<div class="regime"><div><div class="sub" style="margin:0">Breadth</div><b>{b["long"]}/{b["total"]} above their average</b></div>'
             f'<span class="chip {"LONG" if regime=="RISK-ON" else "FLAT" if regime=="RISK-OFF" else "ERROR"}">{regime}</span></div>'
             f'<div class="grid">{"".join(cards)}</div>'
+            + (f'<h2>Watchlist <span class="sub">spot symbols; NOT counted in breadth</span></h2>'
+               f'<div class="sub">Higher-volatility, highly correlated coins (the AI theme). The 200-day filter was validated only partially on the majors above and has not been shown to help on these.</div>'
+               f'<div class="grid">{"".join(watch_cards)}</div>' if watch_cards else '')
+            +
             f'<div class="limits"><b>Read this first</b><ul>{"".join(f"<li>{e(t)}</li>" for t in rep["limits"])}</ul></div>'
             f'<footer>Not financial advice. Data: exchange daily candles (UTC). JSON: /api/trend</footer></main></body></html>')

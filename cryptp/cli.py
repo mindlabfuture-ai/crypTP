@@ -168,7 +168,12 @@ def _dashboard_service(cfg, ex=None, csv_dir=None):
 
     d = cfg.dashboard
     if csv_dir:
-        fetch = lambda sym: load_csv(f"{csv_dir}/{sym.split('/')[0]}_1d.csv")
+        import os as _os
+
+        def fetch(sym):
+            coin = sym.split("/")[0]
+            spot = f"{csv_dir}/{coin}_spot_1d.csv"                  # spot symbols (no ':') prefer a *_spot_1d.csv file
+            return load_csv(spot if ":" not in sym and _os.path.exists(spot) else f"{csv_dir}/{coin}_1d.csv")
         funding = None
     else:
         pub = make_public_exchange()
@@ -179,7 +184,7 @@ def _dashboard_service(cfg, ex=None, csv_dir=None):
             iv = str(fr.get("interval") or "8h")
             hours = float(iv[:-1]) if iv[:-1].replace(".", "").isdigit() and iv.endswith("h") else 8.0
             return float(fr["fundingRate"]) * (24 / hours) * 365 * 100
-    return DashboardService(fetch, d.symbols, d.sma, d.near_pct, d.cache_seconds, funding)
+    return DashboardService(fetch, d.symbols, d.sma, d.near_pct, d.cache_seconds, funding, getattr(d, "watchlist", []))
 
 
 def cmd_dashboard(cfg, args):

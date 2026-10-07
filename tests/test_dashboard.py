@@ -122,3 +122,29 @@ def test_webhook_serves_dashboard_json_and_enforces_token():
             assert (await c.get("/dashboard")).status == 404
 
     asyncio.run(go())
+
+
+def test_watchlist_is_shown_but_never_counted_in_breadth():
+    svc = DashboardService(lambda s: closed(np.r_[np.full(300, 100.0), [130.0]]) if s.startswith("BTC") else closed(np.r_[np.full(300, 100.0), [60.0]]),
+                           ["BTC/USDT:USDT"], watch=["NEAR/USDT", "FET/USDT"])
+    rep = svc.get()
+    assert [c["coin"] for c in rep["coins"]] == ["BTC"] and [c["coin"] for c in rep["watch"]] == ["NEAR", "FET"]
+    assert rep["breadth"] == {"long": 1, "total": 1, "regime": "RISK-ON"}              # two FLAT watch coins change nothing
+    page, txt = render_html(rep), render_text(rep)
+    assert "Watchlist" in page and "NOT counted in breadth" in page and "NEAR" in page and "Watchlist" in txt and "FET" in txt
+
+
+def test_extended_flag_when_far_above_the_average():
+    s = trend_state(closed(np.r_[np.full(300, 100.0), [300.0]]), "NEAR/USDT", 200, now=NOW)
+    assert s["state"] == "LONG" and s["dist_pct"] > 50
+    rep = build_report([s])
+    assert "Far above the average" in render_html(rep) and "EXTENDED" in render_text(rep)
+
+
+def test_a_watchlist_symbol_that_fails_does_not_blank_the_page():
+    def fetch(sym):
+        if sym.startswith("FET"):
+            raise RuntimeError("no such market")
+        return closed(np.r_[np.full(300, 100.0), [130.0]])
+    rep = DashboardService(fetch, ["BTC/USDT:USDT"], watch=["NEAR/USDT", "FET/USDT"]).get()
+    assert {c["coin"]: c["state"] for c in rep["watch"]} == {"NEAR": "LONG", "FET": "ERROR"}
