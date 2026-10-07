@@ -1,6 +1,7 @@
 """SUI 15m, 1:5 RR, $1,000 test (docs/SUI15M_PREREG.md). usage: PYTHONPATH=. python tools/run_sui15m.py SUI_15m.csv A|B [gross]
 A = crypTP structure strategy with a single 5R target; B = Liquidity Sweep Reversal at 5R. 'gross' = zero fees and slippage (diagnostic)."""
 import copy, json, sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from cryptp.backtest import load_csv, run_backtest, split_trades, summarize
@@ -12,7 +13,7 @@ gross = len(sys.argv) > 3 and sys.argv[3] == "gross"
 fee, slip = (0.0, 0.0) if gross else (0.00055, 2.0)
 df = load_csv(path)
 sym = "SUI/USDT:USDT"
-cfg = load_config("config.yaml")
+cfg = load_config(str(Path(__file__).resolve().parent.parent / "config.yaml"))   # works from any working directory
 cfg.risk.paper_equity, cfg.risk.risk_per_trade_pct, cfg.risk.max_leverage = 1000.0, 1.0, 3.0
 if cand == "A":
     cfg.plan.r_multiples, cfg.plan.tp_fractions, cfg.plan.sides = [5.0], [1.0], "both"
