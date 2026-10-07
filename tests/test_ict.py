@@ -111,3 +111,71 @@ def test_filters_block_when_killzone_required():
     prep.setups = {2: [Setup(1, 2, 100.0, 98.0, 6)]}
     r = run_ict(df, "X", p, 0.0, 0.0, charge_funding=False, prep=prep)
     assert not r.trades and r.filtered["killzone"] == 1
+
+
+# ---- SMC order-block model ----
+from cryptp.ict import detect_setups_smc
+
+
+def smc_series():
+    """Down-drift forming a swing high at bar 12 (105), a bearish candle (the order block) at bar 18, then an impulse that closes above 105."""
+    rows, px = [], 100.0
+    for i in range(12):
+        rows.append((px, px + 0.5, px - 0.3, px + 0.3)); px += 0.4
+    rows.append((104.6, 105.0, 104.2, 104.4))             # 12 swing high 105.0
+    for i in range(5):                                     # 13..17 fall back (confirms the swing), small candles
+        rows.append((104.4 - i * 0.4, 104.6 - i * 0.4, 103.9 - i * 0.4, 104.0 - i * 0.4))
+    rows.append((102.6, 102.7, 101.8, 102.0))             # 18 bearish candle = order block [101.8, 102.7]
+    rows.append((102.0, 102.4, 101.9, 102.3))             # 19
+    rows.append((102.3, 106.0, 102.2, 105.9))             # 20 impulse: closes above 105, near its high, large range
+    rows.append((105.9, 106.1, 105.5, 105.8))
+    return rows
+
+
+def test_smc_detects_bos_impulse_order_block_and_stop():
+    df = frame(smc_series())
+    p = IctParams(model="smc")
+    a = atr(df).to_numpy(float)
+    setups, cnt = detect_setups_smc(df, p, a)
+    longs = [s for v in setups.values() for s in v if s.d > 0]
+    assert cnt["bos_long"] >= 1 and cnt["impulse_long"] >= 1 and len(longs) == 1
+    s = longs[0]
+    assert s.m == 20 and s.ce == pytest.approx((101.8 + 102.7) / 2) and s.stop_raw < 101.8
+
+
+def test_smc_requires_an_impulse():
+    rows = smc_series()
+    rows[20] = (102.3, 105.1, 102.2, 105.05)               # breaks 105 but with a small range relative to ATR? keep range small
+    df = frame(rows)
+    a = atr(df).to_numpy(float)
+    on, _ = detect_setups_smc(df, IctParams(model="smc", impulse_atr=50.0), a)
+    off, _ = detect_setups_smc(df, IctParams(model="smc", use_impulse=False), a)
+    assert not [s for v in on.values() for s in v if s.d > 0]
+    assert [s for v in off.values() for s in v if s.d > 0]
+
+
+def test_smc_setups_are_causal_prefix():
+    df = synthetic_ohlcv(4000, seed=9)
+    p = IctParams(model="smc")
+    a = atr(df).to_numpy(float)
+    full, _ = detect_setups_smc(df, p, a)
+    cut = 2500
+    part, _ = detect_setups_smc(df.iloc[:cut].reset_index(drop=True), p, a[:cut])
+    f = {m: [(s.d, round(s.ce, 8), round(s.stop_raw, 8)) for s in v] for m, v in full.items() if m < cut - 25}
+    q = {m: [(s.d, round(s.ce, 8), round(s.stop_raw, 8)) for s in v] for m, v in part.items() if m < cut - 25}
+    assert f == q and len(f) > 5
+
+
+def test_smc_short_is_exact_mirror_of_long():
+    df = synthetic_ohlcv(30000, seed=6)
+    C = 2 * df["high"].max()
+    r = df.copy()
+    r["open"], r["close"] = C - df["open"], C - df["close"]
+    r["high"], r["low"] = C - df["low"], C - df["high"]
+    p = IctParams(model="smc", use_killzone=False, min_stop_pct=0.0, max_stop_pct=1e6, max_leverage=1e6)
+    a = run_ict(df, "X", p, 0.0, 0.0, charge_funding=False).trades
+    b = run_ict(r, "X", p, 0.0, 0.0, charge_funding=False).trades
+    assert len(a) > 20
+    assert [(t.entry_ts, t.side) for t in a] == [(t.entry_ts, "sell" if t.side == "buy" else "buy") for t in b]
+    assert np.allclose([t.r for t in a], [t.r for t in b], atol=1e-6)
+    assert {t.side for t in a} == {"buy", "sell"}

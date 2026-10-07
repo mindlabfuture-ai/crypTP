@@ -42,6 +42,14 @@ class IctParams:
     use_fvg: bool = True
     sides: str = "both"                  # both | long | short
     htf: str = "4h"
+    # SMC order-block model (docs/SMC_VWAP_PREREG.md): model="smc"
+    model: str = "ict"                   # ict | smc
+    impulse_atr: float = 1.2             # BOS bar true range >= this x ATR(14) ...
+    impulse_close_frac: float = 0.25     # ... and it closes in the top (bottom for shorts) 25% of its range
+    use_impulse: bool = True
+    ob_lookback: int = 10
+    ob_fill_bars: int = 16
+    ob_entry: str = "mid"                # mid | edge
 
 
 KZ = ((7, 10), (12, 15))
@@ -169,11 +177,64 @@ def detect_setups(df: pd.DataFrame, p: IctParams, a: np.ndarray) -> tuple[dict, 
     return out, cnt
 
 
+def detect_setups_smc(df: pd.DataFrame, p: IctParams, a: np.ndarray) -> tuple[dict, dict]:
+    """Causal scan: break of the last confirmed swing (first break only) by an impulse bar -> order block (last opposite candle) retest."""
+    o, h, l, c = (df[x].to_numpy(float) for x in ("open", "high", "low", "close"))
+    n = len(df)
+    Lp, Lb, Hp, Hb = _last_confirmed(df, p)
+    pc = np.r_[np.nan, c[:-1]]
+    tr = np.maximum.reduce([h - l, np.abs(h - pc), np.abs(l - pc)])
+    out: dict[int, list[Setup]] = {}
+    cnt = dict(bos_long=0, bos_short=0, impulse_long=0, impulse_short=0, setups_long=0, setups_short=0)
+    used_up, used_dn = set(), set()
+    for b in range(max(p.ob_lookback, 2 * p.swing + 2), n - 1):
+        for d in (1, -1):
+            if p.sides == "long" and d < 0 or p.sides == "short" and d > 0:
+                continue
+            if d > 0:
+                lvl, sb = Hp[b], int(Hb[b])
+                if sb < 0 or np.isnan(lvl) or sb in used_up or not c[b] > lvl:
+                    continue
+                used_up.add(sb)
+            else:
+                lvl, sb = Lp[b], int(Lb[b])
+                if sb < 0 or np.isnan(lvl) or sb in used_dn or not c[b] < lvl:
+                    continue
+                used_dn.add(sb)
+            cnt["bos_long" if d > 0 else "bos_short"] += 1
+            if np.isnan(a[b]):
+                continue
+            if p.use_impulse:
+                rng = h[b] - l[b]
+                top = (c[b] - l[b]) >= (1 - p.impulse_close_frac) * rng if d > 0 else (h[b] - c[b]) >= (1 - p.impulse_close_frac) * rng
+                if not (tr[b] >= p.impulse_atr * a[b] and top and rng > 0):
+                    continue
+            cnt["impulse_long" if d > 0 else "impulse_short"] += 1
+            ob = None
+            for j in range(b - 1, b - p.ob_lookback - 1, -1):
+                if (c[j] < o[j]) if d > 0 else (c[j] > o[j]):
+                    ob = j
+                    break
+            if ob is None:
+                continue
+            lo, hi = l[ob], h[ob]
+            ce = (lo + hi) / 2.0 if p.ob_entry == "mid" else (hi if d > 0 else lo)
+            stop = (lo - p.stop_atr * a[b]) if d > 0 else (hi + p.stop_atr * a[b])
+            end = b + p.ob_fill_bars
+            for t in range(b + 1, min(end, n - 1) + 1):                         # void: a close through the far edge of the block
+                if (c[t] < lo) if d > 0 else (c[t] > hi):
+                    end = t
+                    break
+            out.setdefault(b, []).append(Setup(d, b, float(ce), float(stop), min(end, n - 1)))
+            cnt["setups_long" if d > 0 else "setups_short"] += 1
+    return out, cnt
+
+
 def prepare(df: pd.DataFrame, p: IctParams | None = None) -> Prep:
     p = p or IctParams()
     df = df.reset_index(drop=True)
     a = atr(df).to_numpy(float)
-    setups, cnt = detect_setups(df, p, a)
+    setups, cnt = (detect_setups_smc if p.model == "smc" else detect_setups)(df, p, a)
     prev, pos = vwap_arrays(df)
     trends, htf_done = htf_trend_series(df, p.htf, p.swing, p.swing)
     code = np.array([{"up": 1, "down": -1}.get(t, 0) for t in trends])
