@@ -27,3 +27,20 @@ for w in (1, 2, 4, 8):
     for name, sel in (("gap top 5% (SUI lagged UP)", gap >= q[1]), ("gap bottom 5% (SUI lagged DOWN)", gap <= q[0]), ("all bars", gap.notna())):
         row = "  ".join(f"h{h}: {fwd[h][sel].mean() * 1e4:+6.1f}" for h in fwd)
         print(f"  {name:<32} n={int(sel.sum()):>5}  {row}")
+
+# CONTROL: is it SOL, or just SUI bouncing after its own drops?  (still the discovery window only)
+print("\n--- control: forward 4-bar SUI return (bps) regressed on SUI's own past 4-bar return and SOL's past 4-bar return ---")
+w, h = 4, 4
+X = pd.DataFrame({"sui": rs.rolling(w).sum(), "sol": ro.rolling(w).sum()})
+y = rs.rolling(h).sum().shift(-h)
+d = pd.concat([X, y.rename("y")], axis=1).dropna().iloc[::h]            # non-overlapping rows so t-stats are honest
+A = np.c_[np.ones(len(d)), d["sui"], d["sol"]]
+coef, *_ = np.linalg.lstsq(A, d["y"].to_numpy(), rcond=None)
+res = d["y"].to_numpy() - A @ coef
+se = np.sqrt(np.diag(np.linalg.inv(A.T @ A)) * res.var(ddof=3))
+for n_, c_, s_ in zip(("const", "SUI own past", "SOL past"), coef, se):
+    print(f"  {n_:<13} coef {c_:+.4f}   t = {c_ / s_:+.2f}")
+print(f"  n = {len(d)} non-overlapping rows")
+q = rs.rolling(w).sum().quantile(0.05)
+sel = (rs.rolling(w).sum() <= q)
+print(f"SUI-only control, own worst 5% 4-bar drops: n={int(sel.sum())}  fwd4 = {y[sel].mean() * 1e4:+.1f} bps  (all bars {y.mean() * 1e4:+.1f})")
