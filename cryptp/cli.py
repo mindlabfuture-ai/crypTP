@@ -143,6 +143,24 @@ def cmd_popular(cfg, args):
     print(f"buy & hold over the same period: {r.buy_hold_pct:+.1f}%")
 
 
+def cmd_trend(cfg, args):
+    """Daily SMA trend-regime backtest vs buy and hold (rules fixed in docs/TREND_PREREG.md)."""
+    from .backtest import load_csv
+    from .trend import evaluate
+
+    df = load_csv(args.csv)
+    for lo in (True, False):
+        r = evaluate(df, args.sma, lo, args.fee / 100, args.slip, args.equity)
+        s, h = r["strat"], r["hold"]
+        print(f"SMA{args.sma} {'long/flat ' if lo else 'long/short'} {r['start']} -> {r['end']}  trades {r['trades']}  "
+              f"in-market {r['time_in_market_pct']:.0f}%  net {s['total_pct']:+.0f}%  CAGR {s['cagr_pct']:+.1f}%  "
+              f"maxDD {s['max_dd_pct']:.0f}%  Calmar {s['calmar']:.2f}" + ("  RUINED" if r["ruined"] else ""))
+    print(f"buy & hold                                          net {h['total_pct']:+.0f}%  CAGR {h['cagr_pct']:+.1f}%  "
+          f"maxDD {h['max_dd_pct']:.0f}%  Calmar {h['calmar']:.2f}")
+    state = "ABOVE (trend filter says LONG)" if r["last_close"] > r["last_sma"] else "BELOW (trend filter says FLAT)"
+    print(f"latest close {r['last_close']:.4f} vs SMA{args.sma} {r['last_sma']:.4f}: {state}")
+
+
 def cmd_webhook(cfg, args):
     import asyncio
 
@@ -221,11 +239,17 @@ def main():
     pp.add_argument("--slip", type=float, default=2.0)
     pp.add_argument("--equity", type=float, default=1000.0)
     pp.add_argument("--split", type=float, default=0.7)
+    t = sub.add_parser("trend")
+    t.add_argument("--csv", required=True)
+    t.add_argument("--sma", type=int, default=200)
+    t.add_argument("--fee", type=float, default=0.055)
+    t.add_argument("--slip", type=float, default=2.0)
+    t.add_argument("--equity", type=float, default=1000.0)
     w = sub.add_parser("webhook")
     w.add_argument("--live", action="store_true")
     args = p.parse_args()
     cfg = load_config(args.config)
-    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular}[args.cmd](cfg, args)
+    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular, "trend": cmd_trend}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":
