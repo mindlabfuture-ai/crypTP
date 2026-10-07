@@ -17,13 +17,13 @@ H1["SEI"] = to_hourly(load_csv(f"{D}/SEI_15m.csv"))
 FUND = {}
 for c in TRADABLE:
     f = pd.read_csv(f"{D}/funding_{c}.csv")
-    FUND[c] = (pd.to_datetime(f["ts"], utc=True).to_numpy(), f["rate"].to_numpy(float))
+    FUND[c] = (pd.to_datetime(f["ts"], utc=True).dt.tz_localize(None).to_numpy("datetime64[ns]"), f["rate"].to_numpy(float))
 
 
 def frate(coin):
     ts, r = FUND[coin]
     def g(t):
-        i = np.searchsorted(ts, t.to_datetime64(), side="right") - 1
+        i = np.searchsorted(ts, t.tz_convert(None).to_datetime64(), side="right") - 1
         return float(r[i]) if i >= 0 else P.default_funding
     return g
 
