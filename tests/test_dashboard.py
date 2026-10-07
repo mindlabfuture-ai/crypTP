@@ -98,7 +98,7 @@ def test_renderers_include_state_and_the_limits():
     txt, page = render_text(rep), render_html(rep)
     for needle in ("BTC", "LONG", "+21.0%", "last close"):
         assert needle in txt
-    assert "Read this first" in page and "not a forecast" in page and "+21%/yr" in page and "viewport" in page
+    assert "Read this first" in page and "not a forecast" in page and "+21.0%/yr" in page and "viewport" in page
     assert "closed candles only" in page and "rovisional" not in page and "live" not in page.lower().replace("deliver", "")
 
 
