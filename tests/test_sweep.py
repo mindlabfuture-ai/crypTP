@@ -133,3 +133,19 @@ def test_exact_mirror_symmetry_long_short():
     # the short sweep overwrites the pending state, while the long wins the entry priority. The port reproduces
     # that, so a rare double-sweep bar may differ; every other trade must mirror exactly.
     assert len(mismatch) <= max(1, len(a.trades) // 50)
+
+
+def test_risk_based_sizing_risks_exactly_the_chosen_percent_and_caps_leverage():
+    df = scenario(tail={64: (100.8, 113.0, 100.6, 112.9)})
+    r = run_sweep(df, SYM, SweepParams(risk_pct=1.0, max_leverage=100.0, use_be=False), fee_rate=0, slippage_bps=0, equity0=1000.0)
+    t = r.trades[0]
+    assert t.risk_usd == pytest.approx(10.0, rel=1e-6)                    # 1% of $1,000
+    assert t.pnl == pytest.approx(10.0 * 1.5, rel=1e-6)                   # 1.5R at the default 1.5:1
+    capped = run_sweep(df, SYM, SweepParams(risk_pct=1.0, max_leverage=0.05, use_be=False), fee_rate=0, slippage_bps=0, equity0=1000.0).trades[0]
+    assert capped.risk_usd < 10.0                                         # the cap (5% of equity as notional) binds, so less than 1% is risked
+
+
+def test_five_to_one_target_pays_five_r():
+    df = scenario(tail={64: (100.8, 150.0, 100.6, 149.0)})
+    t = run_sweep(df, SYM, SweepParams(rr=5.0, use_be=False, risk_pct=1.0, max_leverage=100.0), fee_rate=0, slippage_bps=0).trades[0]
+    assert t.r == pytest.approx(5.0, rel=1e-6)

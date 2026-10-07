@@ -39,7 +39,9 @@ class SweepParams:
     use_session: bool = True
     sess_start_min: int = 12 * 60          # 12:00 UTC
     sess_end_min: int = 16 * 60            # 16:00 UTC (exclusive)
-    size_pct: float = 10.0                 # % of equity per trade
+    size_pct: float = 10.0                 # % of equity per trade (notional), used when risk_pct is None
+    risk_pct: float | None = None          # if set: risk this % of equity per trade (stop distance sets the size)
+    max_leverage: float = 3.0              # notional cap when sizing by risk
 
 
 def _pivots(df: pd.DataFrame, n: int):
@@ -88,7 +90,11 @@ def run_sweep(df: pd.DataFrame, symbol: str, p: SweepParams | None = None, fee_r
         if pending is not None and pos == 0:
             d, sl, tp, ec = pending
             fill = O[i] * (1 + d * slip)
-            qty = equity * p.size_pct / 100.0 / fill
+            if p.risk_pct is not None:
+                dist = abs(fill - sl)
+                qty = min(equity * p.risk_pct / 100.0 / dist if dist > 0 else 0.0, equity * p.max_leverage / fill)
+            else:
+                qty = equity * p.size_pct / 100.0 / fill
             fee_in = fill * qty * fee_rate
             equity -= fee_in
             pos, entry_px, stop, target, entry_i = d, fill, sl, tp, i
