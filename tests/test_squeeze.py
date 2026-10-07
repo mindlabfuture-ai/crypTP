@@ -192,3 +192,17 @@ def test_exact_mirror_symmetry_on_random_data():
     assert [t.entry_ts for t in a] == [t.entry_ts for t in b]
     assert [t.r for t in a] == pytest.approx([t.r for t in b], abs=1e-6)
     assert all({"buy": "sell", "sell": "buy"}[x.side] == y.side for x, y in zip(a, b))
+
+
+def test_daily15m_filter_uses_closed_daily_only():
+    import numpy as np, pandas as pd
+    from cryptp.daily15m import daily_allowed
+    days = pd.date_range("2024-01-01", periods=10, freq="D", tz="UTC")
+    close = [1.0] * 5 + [2.0] * 5                       # flips above SMA(3) on day index 5
+    daily = pd.DataFrame({"ts": days, "open": close, "high": close, "low": close, "close": close, "volume": 1.0})
+    m15 = pd.DataFrame({"ts": pd.date_range("2024-01-01", periods=960, freq="15min", tz="UTC")})
+    allowed, valid = daily_allowed(m15, daily, 3)
+    d5 = (m15["ts"] >= days[5]) & (m15["ts"] < days[6])
+    d6 = (m15["ts"] >= days[6]) & (m15["ts"] < days[7])
+    assert not allowed[d5.to_numpy()].any()             # the flip candle itself is not closed during its own day
+    assert allowed[d6.to_numpy()].all()

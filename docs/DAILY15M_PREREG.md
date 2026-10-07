@@ -36,3 +36,30 @@ Miss any one -> reported as FAIL, with no re-tuning on this data.
 - Same 15m trigger with the daily filter OFF (shows whether the daily filter adds anything).
 - Same 15m trigger with the filter inverted (trade only when FLAT).
 - Prefix/causality test: results on truncated data match the full run for early trades.
+
+---
+# RESULTS (single run, rules unchanged from the draft above; approved before running)
+
+Status: **FAIL.** Run with `tools/run_daily15m.py`. The daily SMA-200 needs 200 closed candles, so the first trade is 2023-11-26.
+
+| Run | Trades | Win % | Avg R | SE | Avg R - 2.5 SE | PF | Net | Max DD | OOS trades | OOS avg R | OOS PF |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Main (with costs)** | 672 | 32.3 | -0.107 | 0.057 | -0.250 | 0.82 | -54.8% | -61.6% | 48 | +0.026 | 1.02 |
+| Gross (no fees or slippage) | 674 | 32.3 | -0.023 | 0.057 | -0.166 | 0.94 | -20.6% | -48.0% | 48 | +0.122 | 1.18 |
+| Control: daily filter OFF | 1805 | 31.6 | -0.155 | 0.034 | -0.239 | 0.77 | -95.0% | -95.2% | 560 | -0.245 | 0.66 |
+| Control: filter inverted (FLAT only) | 850 | 31.3 | -0.170 | 0.048 | -0.291 | 0.80 | -78.3% | -79.2% | 512 | -0.270 | 0.62 |
+
+Criteria: trades >= 100 passed; avg R - 2.5 SE > 0 **failed** (-0.25); OOS avg R > 0 and PF > 1 passed but on only 48 trades
+(not meaningful); max DD < 25% **failed** (-61.6%).
+
+Average R by year (main): 2023 -0.04 (46), 2024 -0.17 (324), 2025 -0.05 (271), 2026 -0.03 (31).
+Median stop 1.9% of price. Causality (prefix) test: passed.
+
+Reading:
+- The 15m pullback trigger has no edge of its own: even with no costs the average R is about zero, and the 3R target hits ~32% of the
+  time against a ~25% break-even rate only before costs; costs take the remaining margin.
+- The daily filter helps relative to the controls (-0.11 R vs -0.16 R unfiltered), consistent with it being risk management, but it
+  does not turn a no-edge trigger into a profitable one.
+- The out-of-sample period is thin (48 trades) because SUI sat mostly below its SMA-200 after 2025-09-27, so the strategy was
+  rightly mostly flat. Its small positive OOS number is not evidence of an edge.
+- No re-tuning was done on this data.
