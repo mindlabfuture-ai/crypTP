@@ -188,7 +188,7 @@ def _fmt(v, f="{:+.2f}"):
     return "-" if v is None or (isinstance(v, float) and (math.isnan(v))) else f.format(v)
 
 
-def render_html(j: Journal, token: str = "", can_decide: bool = False, last_error: str | None = None) -> str:
+def render_html(j: Journal, token: str = "", can_decide: bool = False, last_error: str | None = None, dash_token: str = "") -> str:
     e = html.escape
     rep, rows = j.report(), j.rows(200)
     css = ("body{font:15px/1.5 system-ui,sans-serif;margin:0;background:#f7f7f5;color:#1c1c1a}main{max-width:1100px;margin:0 auto;padding:20px 16px}"
@@ -206,7 +206,8 @@ def render_html(j: Journal, token: str = "", can_decide: bool = False, last_erro
     def act(r):
         if r["status"] != "pending" or not can_decide:
             return e(r["decision"])
-        return (f'<form method="post" action="/journal/decide" style="display:inline"><input type="hidden" name="id" value="{r["id"]}">'
+        action = "/journal/decide" + (f"?token={html.escape(dash_token)}" if dash_token else "")
+        return (f'<form method="post" action="{action}" style="display:inline"><input type="hidden" name="id" value="{r["id"]}">'
                 f'<input type="hidden" name="token" value="{e(token)}"><button name="action" value="approve">Approve</button> '
                 f'<button name="action" value="skip">Skip</button></form> <span class="sub">{e(r["decision"])}</span>')
     cand = "".join(

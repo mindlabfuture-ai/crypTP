@@ -140,3 +140,21 @@ def test_webhook_journal_routes_and_token():
         async with TestClient(TestServer(create_app(None, "s"))) as c:
             assert (await c.get("/journal")).status == 404
     asyncio.run(go())
+
+
+def test_journal_decisions_work_behind_the_dashboard_token():
+    j = Journal()
+    j.propose(DAY, [Plan(DAY, "SOL/USDT:USDT", 100.0, 98.5, 104.5, 0.05)], {"regime": {"risk_on": True}})
+    cid = j.rows()[0]["id"]
+
+    async def go():
+        async with TestClient(TestServer(create_app(None, "s", dashboard_token="dt", journal=j, journal_token="jt"))) as c:
+            assert (await c.get("/journal?jtoken=jt")).status == 403                     # dashboard token missing
+            page = await (await c.get("/journal?token=dt&jtoken=jt")).text()
+            assert 'action="/journal/decide?token=dt"' in page
+            r = await c.post("/journal/decide", data={"id": cid, "action": "approve", "token": "jt"}, allow_redirects=False)
+            assert r.status == 403                                                       # no dashboard token on the POST
+            r = await c.post("/journal/decide?token=dt", data={"id": cid, "action": "approve", "token": "jt"}, allow_redirects=False)
+            assert r.status == 303 and "token=dt" in r.headers["Location"]
+            assert (await c.get(r.headers["Location"])).status == 200
+    asyncio.run(go())

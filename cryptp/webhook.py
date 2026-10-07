@@ -67,7 +67,7 @@ def create_app(agent, secret: str, dashboard=None, dashboard_token: str = "", jo
         from .journal import render_html as render_journal
         tok = request.query.get("jtoken", "")
         err = journal_service.last_error if journal_service is not None else None
-        page = await asyncio.to_thread(render_journal, journal, tok, _journal_ok(request, tok), err)
+        page = await asyncio.to_thread(render_journal, journal, tok, _journal_ok(request, tok), err, request.query.get("token", ""))
         return web.Response(text=page, content_type="text/html")
 
     async def journal_json(request: web.Request) -> web.Response:
@@ -82,6 +82,8 @@ def create_app(agent, secret: str, dashboard=None, dashboard_token: str = "", jo
     async def journal_decide(request: web.Request) -> web.Response:
         if journal is None:
             return web.json_response({"error": "journal not enabled"}, status=404)
+        if not _authorised(request):
+            return web.json_response({"error": "forbidden"}, status=403)
         form = await request.post()
         tok = str(form.get("token", ""))
         if not _journal_ok(request, tok):                         # decisions need JOURNAL_TOKEN; unset = disabled over HTTP
