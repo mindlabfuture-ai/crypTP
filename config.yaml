@@ -50,7 +50,7 @@ dumb_money:
 
 dashboard:
   symbols: ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "ADA/USDT:USDT", "SUI/USDT:USDT"]
-  watchlist: ["NEAR/USDT", "RENDER/USDT", "FET/USDT"]   # spot symbols; shown separately, NOT counted in breadth
+  watchlist: ["NEAR/USDT", "RENDER/USDT", "FET/USDT", "SEI/USDT:USDT"]   # shown separately, NOT counted in breadth
   sma: 200
   near_pct: 3.0            # display-only: flag coins within this % of their average
   cache_seconds: 600       # refresh at most this often (exchange rate limits)

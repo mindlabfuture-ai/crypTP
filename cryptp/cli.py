@@ -231,6 +231,28 @@ def cmd_journal(cfg, args):
     print(_json.dumps(rep, indent=1, default=str))
 
 
+def cmd_alerts(cfg, args):
+    """Telegram helpers: list chat ids that messaged your bot, send a test message, or run one alert check."""
+    from .alerts import AlertService, telegram_chat_ids, telegram_sender
+
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        raise SystemExit("set TELEGRAM_BOT_TOKEN first (from @BotFather)")
+    if args.chat_ids:
+        ids = telegram_chat_ids(token)
+        print("\n".join(f"{i}  {n}" for i, n in ids) or "no chats yet: send your bot any message, then retry")
+        return
+    chat = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not chat:
+        raise SystemExit("set TELEGRAM_CHAT_ID (find it with: alerts --chat-ids)")
+    send = telegram_sender(token, chat)
+    if args.test:
+        send("crypTP test: alerts are connected.")
+        print("sent")
+    if args.tick:
+        print(AlertService(_dashboard_service(cfg), send, args.db, cfg.dashboard.near_pct).tick() or "nothing to do yet today")
+
+
 def cmd_webhook(cfg, args):
     import asyncio
 
@@ -294,6 +316,28 @@ def cmd_webhook(cfg, args):
             task.cancel()
     app.cleanup_ctx.append(journal_loop)
 
+    tg_token, tg_chat = os.environ.get("TELEGRAM_BOT_TOKEN", ""), os.environ.get("TELEGRAM_CHAT_ID", "")
+    alerts = None
+    if tg_token and tg_chat:
+        from .alerts import AlertService, telegram_sender
+        alerts = AlertService(dash, telegram_sender(tg_token, tg_chat), os.environ.get("CRYPTP_DB") or "alerts.db",
+                              cfg.dashboard.near_pct, os.environ.get("PUBLIC_URL", ""))
+
+    async def alert_loop(_app):
+        task = None
+        if alerts is not None:
+            async def loop():
+                while True:
+                    msg = await asyncio.to_thread(alerts.tick)
+                    if msg:
+                        print(msg, flush=True)
+                    await asyncio.sleep(600)
+            task = asyncio.create_task(loop())
+        yield
+        if task:
+            task.cancel()
+    app.cleanup_ctx.append(alert_loop)
+
     async def warm(_app):                                   # build the first report in the background so page 1 is fast
         asyncio.create_task(asyncio.to_thread(dash.get))
     app.on_startup.append(warm)
@@ -349,9 +393,14 @@ def main():
     jn.add_argument("--tick", action="store_true", help="propose today's candidates (after 00:05 UTC) and update outcomes")
     jn.add_argument("--decide", nargs=2, metavar=("ID", "approve|skip"))
     jn.add_argument("--note", default="")
+    al = sub.add_parser("alerts", help="Telegram alerts for coins near their 200-day average")
+    al.add_argument("--chat-ids", action="store_true", help="list chats that messaged your bot (to find TELEGRAM_CHAT_ID)")
+    al.add_argument("--test", action="store_true", help="send a test message")
+    al.add_argument("--tick", action="store_true", help="run today's check once")
+    al.add_argument("--db", default="alerts.db")
     args = p.parse_args()
     cfg = load_config(args.config)
-    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular, "trend": cmd_trend, "dashboard": cmd_dashboard, "journal": cmd_journal}[args.cmd](cfg, args)
+    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular, "trend": cmd_trend, "dashboard": cmd_dashboard, "journal": cmd_journal, "alerts": cmd_alerts}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":

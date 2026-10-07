@@ -80,5 +80,16 @@ candidates are your paper trades; skipped ones are tracked as "shadow" trades so
   If `DASHBOARD_TOKEN` is set, it also guards the journal pages.
 - CLI: `python -m cryptp.cli journal --tick` (propose + update), `--decide ID approve|skip`, prints the report.
 
+## Telegram alerts (coins near their 200-day average)
+Once per UTC day after 00:05 (closed daily candles only), the server compares every dashboard and watchlist coin with the previous close and sends a
+Telegram message when a coin comes within `dashboard.near_pct` (3%) of its SMA-200, or flips LONG <-> FLAT. The first run sends one summary of coins
+already near the line. Not an entry signal by itself: near the line is where the filter whipsaws.
+1. In Telegram, message @BotFather, send `/newbot`, and copy the bot token.
+2. Send your new bot any message (e.g. "hi").
+3. Find your chat id: `TELEGRAM_BOT_TOKEN=... python -m cryptp.cli alerts --chat-ids`, or open
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` and read `message.chat.id`.
+4. On Railway set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (optional `PUBLIC_URL` to include a link). The server enables alerts when both exist.
+   `python -m cryptp.cli alerts --test` sends a test message.
+
 ## Not built yet
 Claude analyst layer (news/sentiment narrative), persistent trade log, WebSocket feeds.
