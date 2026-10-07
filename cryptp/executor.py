@@ -18,13 +18,17 @@ class Position:
 
 
 class PaperExecutor:
-    def __init__(self, equity: float):
+    def __init__(self, equity: float, fee_rate: float = 0.0, slippage: float = 0.0):
         self.equity = equity
+        self.fee_rate = fee_rate          # per side, fraction of notional (taker)
+        self.slippage = slippage          # applied against stop-market exits, fraction of price
         self.positions: dict[str, Position] = {}
         self.closed_pnl: list[float] = []
 
     def submit(self, plan: TradePlan, qty: float) -> str:
-        self.positions[plan.symbol] = Position(plan, qty, qty, plan.stop)
+        fee = plan.entry * qty * self.fee_rate
+        self.equity -= fee
+        self.positions[plan.symbol] = Position(plan, qty, qty, plan.stop, realized=-fee)
         return f"paper-{plan.symbol}"
 
     def open_symbols(self) -> set[str]:
@@ -40,21 +44,23 @@ class PaperExecutor:
         self.closed_pnl.append(pos.realized)
         return pnl
 
-    def on_candle(self, symbol: str, high: float, low: float) -> float:
-        """Advance a position through one candle. Stop is checked first (conservative)."""
+    def on_candle(self, symbol: str, high: float, low: float, open_: float | None = None) -> float:
+        """Advance a position through one candle. Stop is checked first (conservative).
+        If the candle opens through the stop, the stop fills at the open (gap risk)."""
         pos = self.positions.get(symbol)
         if not pos:
             return 0.0
         p = pos.plan
         pnl = 0.0
         if low <= pos.stop:
-            pnl += (pos.stop - p.entry) * pos.remaining
+            px = (pos.stop if open_ is None else min(pos.stop, open_)) * (1 - self.slippage)
+            pnl += (px - p.entry) * pos.remaining - px * pos.remaining * self.fee_rate
             pos.remaining = 0.0
         else:
             while pos.next_tp < len(p.targets) and high >= p.targets[pos.next_tp]:
                 frac = p.fractions[pos.next_tp]
                 q = min(pos.qty * frac, pos.remaining)
-                pnl += (p.targets[pos.next_tp] - p.entry) * q
+                pnl += (p.targets[pos.next_tp] - p.entry) * q - p.targets[pos.next_tp] * q * self.fee_rate
                 pos.remaining -= q
                 if pos.next_tp == 0:
                     pos.stop = max(pos.stop, p.entry)   # TP1 hit -> stop to breakeven

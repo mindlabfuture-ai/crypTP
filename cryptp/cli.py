@@ -80,6 +80,44 @@ def cmd_run(cfg, args):
         time.sleep(args.interval)
 
 
+def cmd_backtest(cfg, args):
+    import os as _os
+
+    from .backtest import (format_summary, load_csv, run_backtest, split_trades, summarize,
+                           synthetic_ohlcv)
+    from .exchange import fetch_ohlcv_history
+
+    tf = cfg.structure.timeframe
+    if args.synthetic:
+        print("SYNTHETIC random-walk data: a pipeline check only, results are meaningless")
+        df = synthetic_ohlcv(seed=1)
+    elif args.csv:
+        df = load_csv(args.csv)
+    else:
+        cache = f"data/{args.symbol.replace('/', '_').replace(':', '_')}_{tf}_{args.days}d.csv"
+        if _os.path.exists(cache):
+            df = load_csv(cache)
+        else:
+            df = fetch_ohlcv_history(make_exchange(cfg), args.symbol, tf, args.days)
+            _os.makedirs("data", exist_ok=True)
+            df.to_csv(cache, index=False)
+    cfg.risk.paper_equity = args.equity
+    res = run_backtest(df, args.symbol, cfg, fee_rate=args.fee / 100, slippage_bps=args.slip)
+    print(f"{args.symbol} {tf}  {df['ts'].iloc[0]:%Y-%m-%d} -> {df['ts'].iloc[-1]:%Y-%m-%d}  "
+          f"{len(df)} bars  fee {args.fee}%/side  slippage {args.slip}bps  start equity {args.equity}")
+    print(format_summary("ALL", summarize(res.trades, res.equity0, res.equity)))
+    ins, oos, cut = split_trades(res.trades, args.split, df)
+    print(format_summary(f"in-sample", summarize(ins, res.equity0)))
+    print(format_summary(f"out-of-sample", summarize(oos, res.equity0)) + f"   (split {cut:%Y-%m-%d})")
+    print(f"buy & hold over the same period: {res.buy_hold_pct:+.1f}%")
+    if len(res.trades) < 30:
+        print(f"WARNING: only {len(res.trades)} trades. Too few to conclude anything.")
+    if args.out:
+        import pandas as pd
+        pd.DataFrame([{**t.__dict__, "r": t.r} for t in res.trades]).to_csv(args.out, index=False)
+        print(f"trades written to {args.out}")
+
+
 def cmd_webhook(cfg, args):
     import asyncio
 
@@ -131,11 +169,21 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("--live", action="store_true")
     r.add_argument("--interval", type=int, default=900)
+    b = sub.add_parser("backtest")
+    b.add_argument("symbol", nargs="?", default="BTC/USDT:USDT")
+    b.add_argument("--days", type=int, default=90)
+    b.add_argument("--csv")
+    b.add_argument("--synthetic", action="store_true")
+    b.add_argument("--fee", type=float, default=0.055, help="percent per side (Bybit linear taker)")
+    b.add_argument("--slip", type=float, default=2.0, help="stop-exit slippage in bps")
+    b.add_argument("--equity", type=float, default=1000.0)
+    b.add_argument("--split", type=float, default=0.7)
+    b.add_argument("--out")
     w = sub.add_parser("webhook")
     w.add_argument("--live", action="store_true")
     args = p.parse_args()
     cfg = load_config(args.config)
-    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook}[args.cmd](cfg, args)
+    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":

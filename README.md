@@ -16,6 +16,7 @@ python -m pytest
 python -m cryptp scan
 python -m cryptp analyze BTC/USDT:USDT
 python -m cryptp run                 # paper mode, loops every 15 min
+python -m cryptp backtest BTC/USDT:USDT --days 90   # needs Bybit access; or use --csv FILE
 python -m cryptp run --live          # real orders, see safety below
 ```
 Settings live in `config.yaml`. Copy `.env.example` to `.env` and export the keys for authenticated use.
@@ -27,8 +28,23 @@ Settings live in `config.yaml`. Copy `.env.example` to `.env` and export the key
 - Risk limits are deterministic code, never LLM decisions.
 - No strategy guarantees TP hits. Backtest and paper trade before risking capital.
 
+## Backtester
+`python -m cryptp backtest SYMBOL [--days N | --csv FILE | --synthetic] [--fee 0.055] [--slip 2] [--split 0.7] [--out trades.csv]`
+
+Bar-by-bar replay of the same analyzer, planner, risk gate and paper executor the live agent uses.
+- No lookahead: the signal comes from candles up to bar *i*, the fill is at the **open of bar i+1**,
+  and the higher-timeframe trend uses only fully closed HTF candles (a test checks that a run on
+  truncated data reproduces the full run's earlier trades).
+- Costs: taker fee per side, slippage on stop exits, and a stop that gaps fills at the open, not the stop.
+- Entry is edge-triggered (plan newly valid) with a cooldown after each exit.
+- Output: trades, win rate, average R, profit factor, return, max drawdown, an in-sample / out-of-sample
+  split with the *same fixed parameters*, and buy and hold for comparison. It warns below 30 trades.
+- It tests crypTP's own structure rules. It does **not** replay the TradingView Wyckoff/SMC alerts: Pine
+  cannot run here. To test those, export the alert history and add it as a signal source.
+- Fetched candles are cached in `data/`. `--synthetic` is a pipeline check only; its results mean nothing.
+
 ## TradingView
 See docs/TRADINGVIEW.md: `python -m cryptp webhook` receives Wyckoff and Smart Money Concepts alerts.
 
 ## Not built yet
-Backtester, Claude analyst layer (news/sentiment narrative), persistent trade log, WebSocket feeds.
+Claude analyst layer (news/sentiment narrative), persistent trade log, WebSocket feeds.
