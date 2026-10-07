@@ -63,3 +63,46 @@ Any miss -> FAIL, no retuning.
 - FAIL: stop searching for SUI entry signals on this history; remaining supported tools are the daily SMA-200 state (spot), the dashboard
   and the safety checks. The honest next evidence is a paper-forward log of the agent as a discretionary assistant.
 - PASS: Bybit-testnet/paper-forward >= 60 days with the same rules before any live capital; live stays gated.
+
+---
+# RESULT (single run, rules unchanged from the draft above; approved before running)
+
+Status: **FAIL** (4 of 9 criteria missed). Run with `tools/run_hourly.py`. Engine hand-checked by unit tests before the run
+(midnight break-even only when in profit, lock effective next bar, causal signals); prefix test passed.
+SUI window 2023-11-21 -> 2026-10-07 (first bar with a daily SMA-200). 353 raw signals; 130 trades (143 signals arrived while a trade was
+still open, because trades now run for days and hold the only position slot).
+
+| SUI | Trades | Win % | Avg R | SE | Avg R - 2.5 SE | PF | Net | Max DD |
+|---|---|---|---|---|---|---|---|---|
+| **Main (fees, slippage, funding)** | 130 | 20.0 | -0.012 | 0.138 | -0.357 | 0.96 | -3.1% | -18.2% |
+| Gross (no costs, no funding) | 130 | 20.0 | +0.053 | | | 1.08 | +5.5% | -15.2% |
+| Control: fixed +3R, no trail | 135 | 20.0 | +0.031 | | | 1.03 | +2.7% | -16.7% |
+| Secondary: midnight forced flat | 154 | 40.9 | -0.002 | | | 0.98 | -1.5% | -18.0% |
+
+| Criterion | Result |
+|---|---|
+| >= 150 trades | **FAIL** (130) |
+| Avg R - 2.5 SE > 0 | **FAIL** (-0.357) |
+| PF >= 1.15 | **FAIL** (0.96) |
+| Gross avg R > 0 | pass (+0.053, within noise) |
+| Max DD < 25% | pass (-18.2%) |
+| Net avg R > 0 in both halves | **FAIL** (H1 +0.084 on 81 trades; H2 -0.172 on 49) |
+| >= 60% of months (>= 8 trades) positive | **FAIL** (3 of 7) |
+| Beats random-entry p95 | pass, barely (-0.012 vs p95 -0.016; random median -0.173) |
+| SOL replication (n >= 100, avg R > 0, PF > 1) | pass, barely (213 trades, +0.019 R, PF 1.01; H1 +0.097, H2 -0.157) |
+
+Cost sensitivity (SUI avg R): fees x0.5 +0.006, x1 -0.012, x2 -0.050.
+
+Exit anatomy (SUI): 26 trades reached +3R (best +6.8 R); 50 trades were moved to break-even at midnight and 37 of those (74%) were stopped
+at break-even (each ~-0.1 R after fees); exits: 93 stops, 37 break-even stops, none by time. Funding: paid $25.23, received $2.06 over
+the 3-year run (median hold ~19 h, median stop 3.3% of price, wider than the ~1.6% assumed in the draft). The forced-flat variant cut
+28 trades that were above +1 R.
+
+Reading:
+- A genuine near-zero result, not a clean failure: gross +0.05 R, net -0.01 R on SUI and +0.02 R on SOL, both beating random entries
+  only marginally. Costs and funding consume exactly the small edge there is, and the effect is not statistically distinguishable from zero.
+- Second-half performance is negative on both coins (SUI -0.17 R, SOL -0.16 R), so whatever small edge existed in 2023-2024 is not present
+  in 2025-26. This is the same pattern as every earlier test.
+- Run-the-winner plus the midnight break-even did NOT beat the plain fixed +3R target (-0.012 vs +0.031): the break-even stops (74% of those
+  moved) and funding cost more than the occasional big winner added.
+- Per the pre-registration: no retuning; the secondary variant cannot rescue the failure.
