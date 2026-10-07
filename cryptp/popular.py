@@ -71,9 +71,11 @@ class PopResult:
 
 def run_reversal(df: pd.DataFrame, long_sig: pd.Series, short_sig: pd.Series, name: str = "",
                  long_only: bool = False, fee_rate: float = 0.00055, slippage_bps: float = 2.0,
-                 equity0: float = 1000.0, warmup: int = 250) -> PopResult:
+                 equity0: float = 1000.0, warmup: int = 250, funding: np.ndarray | None = None) -> PopResult:
     """Target-position engine: a signal at the close of bar i sets the target; the position moves
-    to the target at the open of bar i+1. long_only: a short signal means 'go flat'."""
+    to the target at the open of bar i+1. long_only: a short signal means 'go flat'.
+    funding: optional per-bar sum of perpetual funding rates (fraction of notional). While a position is held
+    through a bar it pays pos * qty * open * funding[i] (longs pay positive rates, shorts receive them)."""
     df = df.reset_index(drop=True)
     n, slip = len(df), slippage_bps / 10_000
     ls, ss = long_sig.reset_index(drop=True), short_sig.reset_index(drop=True)
@@ -100,6 +102,8 @@ def run_reversal(df: pd.DataFrame, long_sig: pd.Series, short_sig: pd.Series, na
                 entry_fee = px * qty * fee_rate
                 equity -= entry_fee
                 pos, entry_px, entry_i = target, px, i
+        if funding is not None and pos != 0:
+            equity -= pos * qty * o * float(funding[i])
         curve[i] = equity + ((closes[i] - entry_px) * qty * pos if pos else 0.0)
         if ls.iloc[i]:
             target = 1

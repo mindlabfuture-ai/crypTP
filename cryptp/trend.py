@@ -29,11 +29,11 @@ def _curve_metrics(eq: pd.Series) -> dict:
 
 def evaluate_signals(df: pd.DataFrame, ls: pd.Series, ss: pd.Series, long_only: bool = True,
                      fee_rate: float = 0.00055, slippage_bps: float = 2.0, equity0: float = 1000.0,
-                     warmup: int = 50) -> dict:
+                     warmup: int = 50, funding: np.ndarray | None = None) -> dict:
     """Run any (long_signal, short_signal) pair through the target-position engine and compare to buy and hold.
     Both curves start at the close BEFORE the first possible fill, so the first trade's costs are counted."""
     df = df.reset_index(drop=True)
-    r = run_reversal(df, ls, ss, "", long_only, fee_rate, slippage_bps, equity0, warmup=warmup)
+    r = run_reversal(df, ls, ss, "", long_only, fee_rate, slippage_bps, equity0, warmup=warmup, funding=funding)
     eq = r.equity.iloc[warmup - 1:]
     bh = pd.Series(df["close"].to_numpy(float), index=df["ts"]).iloc[warmup - 1:]
     strat, hold = _curve_metrics(eq), _curve_metrics(bh)
