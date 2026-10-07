@@ -1,4 +1,4 @@
-"""SUI 15m, 1:5 RR, $1,000 test (docs/SUI15M_PREREG.md). usage: PYTHONPATH=. python tools/sui15m_test.py SUI_15m.csv A|B [gross]
+"""SUI 15m, 1:5 RR, $1,000 test (docs/SUI15M_PREREG.md). usage: PYTHONPATH=. python tools/run_sui15m.py SUI_15m.csv A|B [gross]
 A = crypTP structure strategy with a single 5R target; B = Liquidity Sweep Reversal at 5R. 'gross' = zero fees and slippage (diagnostic)."""
 import copy, json, sys
 import numpy as np
