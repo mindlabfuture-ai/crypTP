@@ -71,5 +71,14 @@ with the same costs and split, in their original long/short form and a long-only
 ## TradingView
 See docs/TRADINGVIEW.md: `python -m cryptp webhook` receives Wyckoff and Smart Money Concepts alerts.
 
+## Paper trade journal (RS pullback)
+Rules: docs/RS_PULLBACK_PREREG.md (shared code: `cryptp/rspullback.py`). Every UTC day after 00:05 the journal proposes up to two candidates
+(only in the dashboard's RISK-ON regime, the strongest coins vs BTC over 7 days, maker limit at yesterday's VWAP, stop 1.5-3%, fixed 3R target, 72h
+time stop). You approve or skip each one; every candidate's outcome is tracked on closed 1h candles at maker/taker costs and funding. Approved
+candidates are your paper trades; skipped ones are tracked as "shadow" trades so you can see whether your judgement adds anything. No orders are placed.
+- Server: set `JOURNAL_ENABLED=yes` (uses `CRYPTP_DB`), and `JOURNAL_TOKEN` to approve/skip from `/journal?jtoken=...`. `/api/journal` is JSON.
+  If `DASHBOARD_TOKEN` is set, it also guards the journal pages.
+- CLI: `python -m cryptp.cli journal --tick` (propose + update), `--decide ID approve|skip`, prints the report.
+
 ## Not built yet
 Claude analyst layer (news/sentiment narrative), persistent trade log, WebSocket feeds.

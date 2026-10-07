@@ -63,3 +63,8 @@ safety:                    # Bybit perp guards, applied by LiveExecutor before a
   max_entry_drift_pct: 0.5 # block if live price moved this far from the planned entry
   max_adverse_funding_8h_pct: 0.05   # block if this side pays more than this per 8h (baseline is 0.01)
   require_exchange_stop: true        # no stop on the exchange after entry => flatten + write KILL
+
+journal:                   # paper-forward journal for docs/RS_PULLBACK_PREREG.md (enable on the server with JOURNAL_ENABLED=yes)
+  tradable: ["ETH/USDT:USDT", "SOL/USDT:USDT", "ADA/USDT:USDT", "SUI/USDT:USDT", "SEI/USDT:USDT"]
+  bench: "BTC/USDT:USDT"   # relative strength is measured against BTC; breadth uses dashboard.symbols
+  # JOURNAL_TOKEN must be set to approve/skip from the web page (/journal?jtoken=...); otherwise use `cryptp journal --decide`

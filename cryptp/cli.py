@@ -202,6 +202,35 @@ def cmd_dashboard(cfg, args):
     print(_json.dumps(rep, indent=1, default=str) if args.json else render_text(rep))
 
 
+def _journal_service(cfg, db_path: str):
+    from .journal import Journal, JournalService
+
+    jc = cfg.journal
+    pub = make_public_exchange()
+    fd = lambda sym: fetch_ohlcv_df(pub, sym, "1d", 260)
+    fh = lambda sym: fetch_ohlcv_df(pub, sym, "1h", 300)
+
+    def funding(sym):
+        return float(pub.fetch_funding_rate(sym)["fundingRate"])
+    j = Journal(db_path)
+    return j, JournalService(j, fd, fh, list(jc.tradable), list(cfg.dashboard.symbols), jc.bench, funding)
+
+
+def cmd_journal(cfg, args):
+    """Paper journal from the command line: tick (propose + update), decide, report."""
+    import json as _json
+
+    j, svc = _journal_service(cfg, args.db)
+    if args.decide:
+        cid, action = args.decide
+        print(j.decide(int(cid), action, args.note or ""))
+    if args.tick:
+        print(svc.tick() or "nothing to do")
+    rep = j.report()
+    rep["candidates"] = j.rows(50)
+    print(_json.dumps(rep, indent=1, default=str))
+
+
 def cmd_webhook(cfg, args):
     import asyncio
 
@@ -244,7 +273,26 @@ def cmd_webhook(cfg, args):
         task.cancel()
 
     dash = _dashboard_service(cfg)
-    app = create_app(agent, os.environ.get("TV_WEBHOOK_SECRET", ""), dash, os.environ.get("DASHBOARD_TOKEN", ""))
+    journal, jsvc = None, None
+    if os.environ.get("JOURNAL_ENABLED", "no").lower() == "yes":
+        journal, jsvc = _journal_service(cfg, os.environ.get("CRYPTP_DB") or "journal.db")
+    app = create_app(agent, os.environ.get("TV_WEBHOOK_SECRET", ""), dash, os.environ.get("DASHBOARD_TOKEN", ""),
+                     journal, os.environ.get("JOURNAL_TOKEN", ""), jsvc)
+
+    async def journal_loop(_app):
+        task = None
+        if jsvc is not None:
+            async def loop():
+                while True:
+                    msg = await asyncio.to_thread(jsvc.tick)
+                    if msg:
+                        print(f"journal: {msg}", flush=True)
+                    await asyncio.sleep(300)
+            task = asyncio.create_task(loop())
+        yield
+        if task:
+            task.cancel()
+    app.cleanup_ctx.append(journal_loop)
 
     async def warm(_app):                                   # build the first report in the background so page 1 is fast
         asyncio.create_task(asyncio.to_thread(dash.get))
@@ -296,9 +344,14 @@ def main():
     db.add_argument("--json", action="store_true")
     w = sub.add_parser("webhook")
     w.add_argument("--live", action="store_true")
+    jn = sub.add_parser("journal", help="paper trade journal (RS pullback rules)")
+    jn.add_argument("--db", default="journal.db")
+    jn.add_argument("--tick", action="store_true", help="propose today's candidates (after 00:05 UTC) and update outcomes")
+    jn.add_argument("--decide", nargs=2, metavar=("ID", "approve|skip"))
+    jn.add_argument("--note", default="")
     args = p.parse_args()
     cfg = load_config(args.config)
-    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular, "trend": cmd_trend, "dashboard": cmd_dashboard}[args.cmd](cfg, args)
+    {"scan": cmd_scan, "analyze": cmd_analyze, "run": cmd_run, "webhook": cmd_webhook, "backtest": cmd_backtest, "popular": cmd_popular, "trend": cmd_trend, "dashboard": cmd_dashboard, "journal": cmd_journal}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":
