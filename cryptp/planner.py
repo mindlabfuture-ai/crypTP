@@ -38,6 +38,12 @@ def build_plan(symbol: str, price: float, atr_val: float, ms: MarketStructure,
     if risk <= 0:
         return None
 
+    # Fee-aware filter: a stop tighter than a few round-trip costs can't pay for itself
+    # (at 0.23% of price a 0.11% round trip costs ~0.5R). Skip, don't widen the structure stop.
+    stop_pct = risk / price * 100
+    if stop_pct < getattr(cfg, "min_stop_cost_mult", 0.0) * getattr(cfg, "round_trip_cost_pct", 0.0):
+        return None
+
     if ms.resistance is not None and (ms.resistance - price) < cfg.min_room_r * risk:
         return None                              # not enough room to run
 

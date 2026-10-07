@@ -102,3 +102,16 @@ def test_rank_prefers_strong_coin():
         {"symbol": "B", "rs_vs_btc": -3, "vol_surge": 0.8, "near_high": 0.7, "uptrend": False, "rsi": 40},
     ]
     assert rank(rows).iloc[0]["symbol"] == "A"
+
+
+def test_fee_aware_filter_skips_tight_stops_and_keeps_wide_ones():
+    from types import SimpleNamespace
+    ms = analyze(zigzag())
+    ms.resistance = None
+    price = float(zigzag()["close"].iloc[-1])                 # 130, structure stop ~5.8 away = 4.5%
+    plan_cfg = SimpleNamespace(**vars(cfg.plan))
+    assert build_plan("X", price, 2.0, ms, "up", plan_cfg) is not None
+    plan_cfg.round_trip_cost_pct = 2.0                         # 3 x 2% = 6% > 4.5% stop
+    assert build_plan("X", price, 2.0, ms, "up", plan_cfg) is None
+    plan_cfg.min_stop_cost_mult = 0.0                          # filter off
+    assert build_plan("X", price, 2.0, ms, "up", plan_cfg) is not None

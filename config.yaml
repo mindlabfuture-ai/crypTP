@@ -24,6 +24,8 @@ plan:
   r_multiples: [1.0, 2.0, 3.0]     # TP ladder in R
   tp_fractions: [0.4, 0.3, 0.3]
   min_room_r: 1.0                  # skip if resistance is closer than this
+  round_trip_cost_pct: 0.15        # taker fee 2 x 0.055% plus slippage, in % of price
+  min_stop_cost_mult: 3.0          # stop must be >= this x round-trip cost (0 disables)
 
 risk:
   paper_equity: 1000
