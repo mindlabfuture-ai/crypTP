@@ -29,7 +29,7 @@ def frate(coin):
 
 
 def days_range(daily, h1):
-    start = max(d["ts"].iloc[0] for d in daily.values()) + pd.Timedelta(days=P.sma + 1)
+    start = max(daily[c]["ts"].iloc[0] for c in BREADTH) + pd.Timedelta(days=P.sma + 1)   # breadth decides the start; SEI joins when eligible
     end = min(h["ts"].iloc[-1] for h in h1.values()).normalize() - pd.Timedelta(days=4)   # leave room for 72h exits
     return pd.date_range(start.normalize(), end, freq="D", tz="UTC")
 
