@@ -53,3 +53,44 @@ rejections), midnight break-even statistics, funding paid/received. UB as inform
 ## After
 - FAIL: stop mechanical entry searches on this history; build the paper-forward journal (you read the setups, the agent records and measures them).
 - PASS: >= 60 days paper-forward on Bybit testnet before any live capital; live stays gated.
+
+---
+# RESULT (single run, rules unchanged from the draft above; approved before running)
+
+Status: **FAIL** (8 of 10 criteria missed), and this time adequately powered. Run with `tools/run_smc.py`. Hand-built detection tests, the impulse test,
+causality and the price-reflection mirror test passed before the run (148 tests); prefix test on the real data passed.
+
+**Funnel (SEI, both sides):** 8,235 breaks of structure -> 3,459 impulses -> 3,455 order blocks/orders -> filters at the fill rejected 928 (VWAP side),
+239 (4h bias), 423 (stop outside 0.45-3.0%) -> **170 trades** (86 long, 84 short) over three years.
+
+| SEI | Trades | Win % | Avg R | SE | Avg R - 3 SE | PF | Net | Max DD |
+|---|---|---|---|---|---|---|---|---|
+| **Main (fees, slippage, funding)** | 170 | 24.1 | -0.341 | 0.146 | -0.779 | 0.57 | -45.7% | -47.5% |
+| Gross (no costs, no funding) | 158 | 25.3 | -0.061 | 0.161 | -0.545 | 0.88 | -12.0% | -21.9% |
+
+| Criterion | Result |
+|---|---|
+| >= 150 trades | pass (170) |
+| Avg R - 3.0 SE > 0 | **FAIL** (-0.779) |
+| PF >= 1.15 | **FAIL** (0.57) |
+| Gross avg R > 0 | **FAIL** (-0.061) |
+| Max DD < 25% | **FAIL** (-47.5%) |
+| Net avg R > 0 in both halves | **FAIL** (H1 -0.396 on 114; H2 -0.229 on 56) |
+| >= 60% of months (>= 6 trades) positive | **FAIL** (2 of 9) |
+| Beats random-entry p95 | **FAIL** (-0.341 vs p95 +0.191; random median -0.142) |
+| SUI replication (>= 100 trades, avg R > 0, PF > 1) | **FAIL** (227 trades, -0.065 R, PF 0.89) |
+| Prefix test | pass |
+
+Ablations (reported only): no VWAP 355 trades -0.258 R; no 4h bias 230 trades -0.323 R; no impulse filter 401 trades -0.364 R; OB-edge entry 356 trades
+-0.350 R; long-only 87 trades -0.131 R; short-only 85 trades -0.430 R. Maker entry (0.02%) -0.286 R; fees x0.5/x1/x2: -0.254 / -0.341 / -0.515 R.
+Exits: 167 stops, 3 break-even stops; 42 trades reached +3R (best +13.6 R). Median stop 0.60% of price; median hold ~6 bars (1.5 h).
+SUI replication -0.065 R (227 trades); UB report-only: 120 trades -0.495 R (10 bps slippage, thin venue).
+
+Reading:
+- Before any costs the average trade loses (-0.06 R) over 158 trades: there is no gross edge to protect, and the pattern is worse than random entries
+  with the same exit (random median -0.14 R, p95 +0.19 R; the model's -0.34 R is below the median).
+- Costs then take ~0.28 R per trade, because the median stop is only 0.60% and the round trip is ~0.15%. Every ablation is negative; none of them
+  contains a lead worth chasing.
+- Both halves lose and both coins lose, so this is a clean negative, not an underpowered one.
+- Per the pre-registration: no retuning, and no further mechanical entry searches on this history. Ten rule sets have now been tested with the same
+  discipline, none with a net edge after costs.
