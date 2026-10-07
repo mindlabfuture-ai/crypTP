@@ -1,0 +1,33 @@
+exchange:
+  testnet: true            # use Bybit testnet until you trust the bot
+  market: linear           # USDT perpetuals
+
+screener:
+  min_quote_volume_usd: 20000000   # 24h turnover filter, avoids illiquid coins
+  timeframe: 1h
+  lookback_bars: 200
+  rs_bars: 24                      # relative-strength window vs BTC
+  top_n: 10
+  max_universe: 80                 # cap candles fetched per scan (rate limits)
+  exclude: ["USDC/USDT:USDT"]
+
+structure:
+  timeframe: 15m                   # entry timeframe
+  htf: 4h                          # higher-timeframe bias
+  swing_left: 3
+  swing_right: 3
+
+plan:
+  long_only: true
+  max_stop_atr: 3.0
+  min_stop_atr: 0.5
+  r_multiples: [1.0, 2.0, 3.0]     # TP ladder in R
+  tp_fractions: [0.4, 0.3, 0.3]
+  min_room_r: 1.0                  # skip if resistance is closer than this
+
+risk:
+  paper_equity: 1000
+  risk_per_trade_pct: 0.5
+  max_daily_loss_pct: 2.0
+  max_open_positions: 3
+  max_leverage: 3
