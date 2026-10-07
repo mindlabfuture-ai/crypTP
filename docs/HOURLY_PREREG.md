@@ -1,6 +1,6 @@
-# 1h trend-continuation breakout on SUI, run-the-winner exit — DRAFT pre-registration
+# 1h trend-continuation breakout on SUI, run-the-winner exit with midnight break-even — DRAFT pre-registration
 
-Status: **DRAFT, awaiting approval. Nothing has been run for this rule set.** Rules freeze on approval.
+Status: **DRAFT (revised: midnight forced flat replaced by a midnight break-even stop), awaiting approval. Nothing has been run for this rule set.** Rules freeze on approval.
 
 ## Why 1h and why this rule
 - docs/BOUNCE_PREREG.md: on 15m, costs (~15 bps round trip) took ~0.22 R per trade at a 0.7% median stop. On 1h the stop is wider
@@ -22,10 +22,15 @@ Status: **DRAFT, awaiting approval. Nothing has been run for this rule set.** Ru
    a. stop hit -> exit at the stop (gap-aware, 2 bps adverse slippage);
    b. **no profit-taking before +3R.** When a bar's high reaches entry + 3R the stop is raised to entry + 1.5R, effective the NEXT bar;
    c. after that, at each bar close stop = max(stop, highest high since entry - 3.0 x ATR(14)), effective the next bar;
-   d. **forced flat at the close of the last bar of the UTC day** (your midnight rule: no overnight funding, no stale stop).
-6. **Risk:** $1,000, 1% risk per trade, 3x max leverage, one position, max 2 trades per UTC day, cooldown 4 bars after an exit.
-7. **Costs:** 0.055% per side + 2 bps slippage per fill; funding at the 08:00 and 16:00 UTC settlements a trade is open through
-   (KuCoin proxy `funding_SUI.csv`, 0.01% if none), as in the bounce test. Funding is reported separately.
+   d. **midnight break-even instead of a forced flat.** At the close of the last bar of each UTC day, if the trade is open and that close is
+      above the entry price, the stop is raised to the entry price (break-even, not fee-adjusted), effective the next bar. If the close is at or
+      below entry, the stop is left unchanged (a stop cannot be placed above the market). Stops never move down. There is no time exit and no
+      cap on how long a trade is held; trades can run for days.
+6. **Risk:** $1,000, 1% risk per trade, 3x max leverage, one position, max 2 trades per UTC day, cooldown 4 bars after an exit. A trade held across days keeps the only position slot, so signals during it are skipped.
+7. **Costs:** 0.055% per side + 2 bps slippage per fill; funding at **all three** settlements (00:00, 08:00, 16:00 UTC) a trade is open through,
+   so overnight holds pay or receive funding (KuCoin proxy `funding_SUI.csv`, 0.01% if none). A long pays when the rate is positive.
+   Funding is reported separately, and the pass test is on net results after funding. A break-even stop exit still costs fees and slippage
+   (about -0.1 R at a 1.5% stop).
 8. Implementation reuses `cryptp/bounce.run_bounce` machinery with the entry/stop/exit parameters above; causality (prefix) test and a
    hand-built exit-mechanics test must pass before the run.
 
@@ -48,10 +53,10 @@ Any miss -> FAIL, no retuning.
 
 ## Controls and secondary (reported, not selecting)
 - **Cost sensitivity:** avg R at fees x 0.5, x 1, x 2 (shows whether the verdict hinges on cost assumptions).
-- **Swing variant, labelled SECONDARY:** identical rules but without rule 5d (no midnight flat), holding across funding, charged at every
-  settlement. It is reported only to inform a *future* registration; it **cannot rescue a primary FAIL** and is not part of pass/fail.
-  Trade-off disclosed: trend breakouts need days to reach +3R, so the midnight rule truncates exactly the trades that would pay; the
-  report counts how many trades the midnight flat cut while above +1R.
+- **Midnight-flat variant, labelled SECONDARY:** identical rules except rule 5d is a forced flat at the close of each UTC day (no overnight
+  funding). It is reported only to show what the break-even rule changes; it **cannot rescue a primary FAIL** and is not part of pass/fail.
+- **Midnight-BE statistics:** how many trades were moved to break-even at least once, how many of those were then stopped at break-even
+  (each costing fees and slippage, about -0.1 R), how many went on to reach +3R, and total funding paid and received.
 - Fixed +3R target without trail, same entries (what the run-the-winner exit adds).
 
 ## After
