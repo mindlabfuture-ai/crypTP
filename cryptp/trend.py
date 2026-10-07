@@ -27,20 +27,29 @@ def _curve_metrics(eq: pd.Series) -> dict:
                 years={int(y): round(100 * (g.iloc[-1] / g.iloc[0] - 1), 1) for y, g in eq.groupby(eq.index.year)})
 
 
-def evaluate(df: pd.DataFrame, n: int = 200, long_only: bool = True, fee_rate: float = 0.00055,
-             slippage_bps: float = 2.0, equity0: float = 1000.0) -> dict:
+def evaluate_signals(df: pd.DataFrame, ls: pd.Series, ss: pd.Series, long_only: bool = True,
+                     fee_rate: float = 0.00055, slippage_bps: float = 2.0, equity0: float = 1000.0,
+                     warmup: int = 50) -> dict:
+    """Run any (long_signal, short_signal) pair through the target-position engine and compare to buy and hold.
+    Both curves start at the close BEFORE the first possible fill, so the first trade's costs are counted."""
     df = df.reset_index(drop=True)
-    ls, ss = sma_trend_signals(df, n)
-    r = run_reversal(df, ls, ss, f"sma{n}", long_only, fee_rate, slippage_bps, equity0, warmup=n)
-    # Both curves start at the close BEFORE the first possible fill, so the first trade's costs are counted.
-    eq = r.equity.iloc[n - 1:]
-    bh = pd.Series(df["close"].to_numpy(float), index=df["ts"]).iloc[n - 1:]
+    r = run_reversal(df, ls, ss, "", long_only, fee_rate, slippage_bps, equity0, warmup=warmup)
+    eq = r.equity.iloc[warmup - 1:]
+    bh = pd.Series(df["close"].to_numpy(float), index=df["ts"]).iloc[warmup - 1:]
     strat, hold = _curve_metrics(eq), _curve_metrics(bh)
     span = (eq.index[-1] - eq.index[0]).total_seconds()
     held = sum((t.exit_ts - t.entry_ts).total_seconds() for t in r.trades)
     wins = [t for t in r.trades if t.pnl > 0]
-    return dict(n=n, long_only=long_only, start=str(eq.index[0].date()), end=str(eq.index[-1].date()),
+    return dict(long_only=long_only, start=str(eq.index[0].date()), end=str(eq.index[-1].date()),
                 trades=len(r.trades), win_rate_pct=100 * len(wins) / len(r.trades) if r.trades else 0.0,
                 time_in_market_pct=100 * held / span if span else 0.0, ruined=bool((r.equity <= 0).any()),
-                strat=strat, hold=hold,
-                last_close=float(df["close"].iloc[-1]), last_sma=float(df["close"].rolling(n).mean().iloc[-1]))
+                strat=strat, hold=hold, last_close=float(df["close"].iloc[-1]))
+
+
+def evaluate(df: pd.DataFrame, n: int = 200, long_only: bool = True, fee_rate: float = 0.00055,
+             slippage_bps: float = 2.0, equity0: float = 1000.0) -> dict:
+    df = df.reset_index(drop=True)
+    ls, ss = sma_trend_signals(df, n)
+    out = evaluate_signals(df, ls, ss, long_only, fee_rate, slippage_bps, equity0, warmup=n)
+    out.update(n=n, last_sma=float(df["close"].rolling(n).mean().iloc[-1]))
+    return out
