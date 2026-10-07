@@ -52,3 +52,34 @@ taker fees assumed (maker/limit entries would cut costs but cannot be simulated 
   limit (no slippage). If a bar reaches both stop and target, the stop is assumed first. A stop that gaps fills at the open.
 - If a position is open when a trigger occurs, the trigger is skipped (one position at a time).
 - Criterion 3 uses 2.5 standard errors. Average R and its standard error are over all trades, including time exits.
+
+---
+## Results (appended after the run; the frozen rules above are unchanged)
+
+SUI/USDT perpetual 15m, 2023-05-05 to 2026-10-07 (120,141 bars), $1,000 start, 1% risk per trade, +5R target, box-midpoint stop,
+flat by 00:00 UTC, standard costs. Out-of-sample from 2025-09-27.
+
+| | Squeeze breakout (frozen spec) |
+|---|---|
+| Trades | 620 (310 long, 310 short) |
+| Trades that reached the +5R target (zero-cost run) | **6.6%** (break-even needs ~18.8%) |
+| Trades stopped at the midpoint | 68.3% |
+| Trades closed at the 00:00 UTC time exit | 25.1% |
+| "Win rate" (any trade with R > 0, incl. small time-exit gains) | 26.5% |
+| Average R after costs (SE) | -0.177 (0.069); minus 2.5 SE = -0.350 |
+| Profit factor | 0.76 |
+| Account | $1,000 -> $305 (-69.5%), max drawdown -72.8% |
+| Zero-cost average R | -0.073 (costs take 0.104 R per trade) |
+| In-sample / out-of-sample avg R | -0.165 (414) / -0.202 (206) |
+| Per year avg R (n) | 2023 -0.09 (123), 2024 -0.26 (163), 2025 -0.16 (190), 2026 -0.19 (144) |
+| Long / short avg R | -0.21 / -0.14 |
+| Median stop | 1.45% of price |
+
+Criteria: (1) >= 300 trades PASS. (2) avg R > 0 FAIL. (3) avg R - 2.5 SE > 0 FAIL. (4) positive in both halves FAIL.
+(5) positive in >= 3 years FAIL. Verdict: FAIL.
+
+Robustness (information only): min squeeze 4 bars -0.146 R ($292), 8 bars -0.238 R ($271), volume 1.0x -0.153 R ($265),
+far-side stop -0.168 R ($467). None is positive; the conclusion does not depend on the chosen parameters.
+
+Reading: there is no edge before costs (-0.07 R at zero cost). Only 6.6% of breakouts ran 5R before the day ended, against 18.8% needed;
+68% fell back through the box midpoint. Results are uniformly negative across years, both directions and both halves.
