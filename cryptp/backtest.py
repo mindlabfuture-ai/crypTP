@@ -15,10 +15,10 @@ import numpy as np
 import pandas as pd
 
 from .dumbmoney import compute as dm_compute
-from .dumbmoney import gate_long
+from .dumbmoney import gate_long, gate_short, normalize_mode
 from .executor import PaperExecutor
 from .indicators import atr
-from .planner import build_plan
+from .planner import build_plan_any
 from .risk import RiskGate, position_size
 from .structure import analyze
 
@@ -36,6 +36,7 @@ class Trade:
     pnl: float            # net of fees and slippage
     risk_usd: float
     bars: int
+    side: str = "buy"
 
     @property
     def r(self) -> float:
@@ -72,17 +73,18 @@ def htf_trend_series(df: pd.DataFrame, htf: str, left: int, right: int):
 
 def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
                  slippage_bps: float = 2.0, cooldown_bars: int = 8, warmup: int = WINDOW,
-                 dm_mode: str | None = None) -> Result:
+                 dm_mode: str | None = None, sides: str | None = None) -> Result:
     df = df.reset_index(drop=True)
     n = len(df)
     s, pcfg = cfg.structure, cfg.plan
+    sides = sides or getattr(pcfg, "sides", "long")
     entry_delta = df["ts"].diff().median()
     trends, htf_done = htf_trend_series(df, s.htf, s.swing_left, s.swing_right)
     close_times = (df["ts"] + entry_delta).to_numpy()
     htf_idx = np.searchsorted(htf_done, close_times, side="right") - 1      # last COMPLETED htf bar
 
     dmc = getattr(cfg, "dumb_money", None)
-    dm_mode = dm_mode if dm_mode is not None else (dmc.mode if dmc else "off")
+    dm_mode = normalize_mode(dm_mode if dm_mode is not None else (dmc.mode if dmc else "off"))
     dm = None
     if dm_mode != "off":
         dm = dm_compute(df, dmc.euphoria_bars, dmc.capitulation_bars, dmc.index_hot, dmc.index_cold)
@@ -95,7 +97,7 @@ def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
     curve = np.full(n, np.nan)
 
     pending = None            # plan decided at close of bar i-1, to be filled at open of bar i
-    prev_valid = False
+    prev_key = None
     cooldown_until = -1
     open_meta = None          # (entry_bar, risk_usd)
     day = None
@@ -108,9 +110,10 @@ def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
 
         # 1. fill the order decided on the previous close, at this bar's open
         if pending is not None and symbol not in ex.positions:
-            fill = float(row["open"]) * (1 + slip)
-            risk = fill - pending.stop
-            if risk > 0 and fill < pending.targets[0]:
+            dd = pending.d
+            fill = float(row["open"]) * (1 + dd * slip)           # adverse for either side
+            risk = dd * (fill - pending.stop)
+            if risk > 0 and dd * fill < dd * pending.targets[0]:
                 plan = dataclasses.replace(pending, entry=fill, risk_per_unit=risk)
                 ok, _ = gate.check(plan, ex.equity)
                 qty = position_size(ex.equity, plan, cfg.risk.risk_per_trade_pct, cfg.risk.max_leverage)
@@ -125,14 +128,15 @@ def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
             gate.daily_pnl += ex.on_candle(symbol, float(row["high"]), float(row["low"]), float(row["open"]))
             if symbol not in ex.positions:                     # closed on this bar
                 res.trades.append(Trade(symbol, df["ts"].iloc[open_meta[0]], row["ts"], pos.plan.entry,
-                                        pos.plan.stop, ex.closed_pnl[-1], open_meta[1], i - open_meta[0]))
+                                        pos.plan.stop, ex.closed_pnl[-1], open_meta[1], i - open_meta[0],
+                                        pos.plan.side))
                 cooldown_until = i + cooldown_bars
                 open_meta = None
 
         mtm = ex.equity
         if symbol in ex.positions:
             p = ex.positions[symbol]
-            mtm += p.remaining * (float(row["close"]) - p.plan.entry)
+            mtm += p.remaining * (float(row["close"]) - p.plan.entry) * p.plan.d
         curve[i] = mtm
 
         # 3. look for a new setup at this bar's close (edge-triggered: plan newly valid)
@@ -142,15 +146,15 @@ def run_backtest(df: pd.DataFrame, symbol: str, cfg, fee_rate: float = 0.00055,
         ms = analyze(w, s.swing_left, s.swing_right)
         a = float(atr(w).iloc[-1])
         htf_trend = trends[htf_idx[i]] if htf_idx[i] >= 0 else "range"
-        plan = build_plan(symbol, float(row["close"]), a, ms, htf_trend, pcfg)
-        valid = plan is not None
-        if valid and dm is not None:
-            ok, _ = gate_long(dm.iloc[i], dm_mode)       # crowd filter is part of "valid": a vetoed
-            if not ok:                                   # setup is taken once the crowd cools off
-                valid = False
-        if valid and not prev_valid and symbol not in ex.positions and i > cooldown_until:
+        plan = build_plan_any(symbol, float(row["close"]), a, ms, htf_trend, pcfg, sides)
+        if plan is not None and dm is not None:
+            dm_gate = gate_long if plan.side == "buy" else gate_short
+            if not dm_gate(dm.iloc[i], dm_mode)[0]:         # crowd filter is part of "valid": a vetoed
+                plan = None                              # setup is taken once the crowd cools off
+        key = plan.side if plan else None
+        if key is not None and key != prev_key and symbol not in ex.positions and i > cooldown_until:
             pending = plan
-        prev_valid = valid
+        prev_key = key
 
     res.equity = pd.Series(curve, index=df["ts"])
     res.buy_hold_pct = (df["close"].iloc[-1] / df["close"].iloc[warmup] - 1) * 100 if n > warmup else 0.0

@@ -38,7 +38,7 @@ class PaperExecutor:
         pos = self.positions.pop(symbol, None)
         if not pos or price is None:
             return 0.0
-        pnl = (price - pos.plan.entry) * pos.remaining + 0.0
+        pnl = (price - pos.plan.entry) * pos.remaining * pos.plan.d
         pos.realized += pnl
         self.equity += pnl
         self.closed_pnl.append(pos.realized)
@@ -46,24 +46,30 @@ class PaperExecutor:
 
     def on_candle(self, symbol: str, high: float, low: float, open_: float | None = None) -> float:
         """Advance a position through one candle. Stop is checked first (conservative).
-        If the candle opens through the stop, the stop fills at the open (gap risk)."""
+        If the candle opens through the stop, the stop fills at the open (gap risk).
+        Works for longs (stop below, targets above) and shorts (the mirror)."""
         pos = self.positions.get(symbol)
         if not pos:
             return 0.0
-        p = pos.plan
+        p, d = pos.plan, pos.plan.d
+        stopped = low <= pos.stop if d > 0 else high >= pos.stop
         pnl = 0.0
-        if low <= pos.stop:
-            px = (pos.stop if open_ is None else min(pos.stop, open_)) * (1 - self.slippage)
-            pnl += (px - p.entry) * pos.remaining - px * pos.remaining * self.fee_rate
+        if stopped:
+            if d > 0:
+                px = (pos.stop if open_ is None else min(pos.stop, open_)) * (1 - self.slippage)
+            else:
+                px = (pos.stop if open_ is None else max(pos.stop, open_)) * (1 + self.slippage)
+            pnl += (px - p.entry) * pos.remaining * d - px * pos.remaining * self.fee_rate
             pos.remaining = 0.0
         else:
-            while pos.next_tp < len(p.targets) and high >= p.targets[pos.next_tp]:
-                frac = p.fractions[pos.next_tp]
-                q = min(pos.qty * frac, pos.remaining)
-                pnl += (p.targets[pos.next_tp] - p.entry) * q - p.targets[pos.next_tp] * q * self.fee_rate
+            while pos.next_tp < len(p.targets) and (high >= p.targets[pos.next_tp] if d > 0
+                                                    else low <= p.targets[pos.next_tp]):
+                tp = p.targets[pos.next_tp]
+                q = min(pos.qty * p.fractions[pos.next_tp], pos.remaining)
+                pnl += (tp - p.entry) * q * d - tp * q * self.fee_rate
                 pos.remaining -= q
-                if pos.next_tp == 0:
-                    pos.stop = max(pos.stop, p.entry)   # TP1 hit -> stop to breakeven
+                if pos.next_tp == 0:                    # TP1 hit -> stop to breakeven
+                    pos.stop = max(pos.stop, p.entry) if d > 0 else min(pos.stop, p.entry)
                 pos.next_tp += 1
         pos.realized += pnl
         self.equity += pnl
@@ -84,13 +90,14 @@ class LiveExecutor:
     def submit(self, plan: TradePlan, qty: float) -> str:
         sym = plan.symbol
         qty = float(self.ex.amount_to_precision(sym, qty))
+        exit_side = "sell" if plan.side == "buy" else "buy"
         order = self.ex.create_order(
-            sym, "market", "buy", qty, params={"stopLoss": self.ex.price_to_precision(sym, plan.stop)}
+            sym, "market", plan.side, qty, params={"stopLoss": self.ex.price_to_precision(sym, plan.stop)}
         )
         for tp, frac in zip(plan.targets, plan.fractions):
             q = float(self.ex.amount_to_precision(sym, qty * frac))
             if q > 0:
-                self.ex.create_order(sym, "limit", "sell", q, float(self.ex.price_to_precision(sym, tp)),
+                self.ex.create_order(sym, "limit", exit_side, q, float(self.ex.price_to_precision(sym, tp)),
                                      params={"reduceOnly": True})
         return str(order.get("id"))
 
@@ -102,5 +109,6 @@ class LiveExecutor:
             qty = float(p.get("contracts") or 0)
             if qty > 0:
                 self.ex.cancel_all_orders(symbol)
-                self.ex.create_order(symbol, "market", "sell", qty, params={"reduceOnly": True})
+                closing = "buy" if str(p.get("side")).lower() == "short" else "sell"
+                self.ex.create_order(symbol, "market", closing, qty, params={"reduceOnly": True})
         return 0.0      # realized PnL is tracked by the exchange; daily limit uses balance in live mode

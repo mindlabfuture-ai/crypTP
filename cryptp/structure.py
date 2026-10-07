@@ -50,11 +50,10 @@ def analyze(df: pd.DataFrame, left: int = 3, right: int = 3) -> MarketStructure:
 
     lsh = highs[-1].price if highs else None
     lsl = lows[-1].price if lows else None
-    bos = None
-    if lsh is not None and price > lsh:
-        bos = "bullish"
-    elif lsl is not None and price < lsl:
-        bos = "bearish"
+    broke_up = lsh is not None and price > lsh
+    broke_dn = lsl is not None and price < lsl
+    # Crossed swings (last high below last low) can satisfy both; that is ambiguous, not bullish.
+    bos = None if broke_up == broke_dn else ("bullish" if broke_up else "bearish")
 
     above = [s.price for s in highs if s.price > price]
     below = [s.price for s in lows if s.price < price]

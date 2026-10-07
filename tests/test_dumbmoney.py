@@ -5,7 +5,7 @@ import pytest
 from cryptp.agent import TradeAgent
 from cryptp.backtest import run_backtest, synthetic_ohlcv
 from cryptp.config import load_config
-from cryptp.dumbmoney import compute, gate_long
+from cryptp.dumbmoney import compute, gate_long, gate_short
 from cryptp.executor import PaperExecutor
 from cryptp.risk import RiskGate
 from cryptp.signals import Signal, SignalBook
@@ -76,3 +76,15 @@ def test_backtest_veto_only_removes_trades_and_off_matches_baseline():
     req = run_backtest(df, "X/USDT:USDT", cfg, dm_mode="require")
     assert len(off.trades) >= 1
     assert len(req.trades) <= len(off.trades) and len(veto.trades) <= len(off.trades) + 2
+
+
+def test_config_default_is_really_off_and_bare_yaml_off_is_normalised(tmp_path):
+    from cryptp.dumbmoney import normalize_mode
+    assert load_config("config.yaml").dumb_money.mode == "off"          # quoted in the file
+    bare = tmp_path / "c.yaml"
+    bare.write_text("dumb_money:\n  mode: off\n")                       # YAML 1.1 turns this into False
+    raw = load_config(str(bare)).dumb_money.mode
+    assert raw is False and normalize_mode(raw) == "off"
+    assert gate_long({"euphoric": True, "capitulation": False}, raw)[0]  # must not act as a veto
+    assert gate_short({"euphoric": False, "capitulation": True}, raw)[0]
+    assert normalize_mode("veto") == "veto"

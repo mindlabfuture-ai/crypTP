@@ -106,9 +106,23 @@ class SignalBook:
             return False, "SMC swing bias not bullish"
         return True, f"{trig[1]} + smc_bias={bias}"
 
-    def exit_signal(self, symbol: str, since: float, now: float) -> str | None:
-        """A bearish Wyckoff event or bearish SMC swing break that arrived after the entry."""
-        for events in (WY_EXIT, SMC_BEAR):
+    def armed_short(self, symbol: str, now: float) -> tuple[bool, str]:
+        """Mirror of armed_long: bearish Wyckoff trigger + bearish SMC swing bias, nothing bullish since."""
+        trig = self._latest(symbol, WY_EXIT, now, self.cfg.wy_ttl_min)
+        if not trig:
+            return False, "no recent Wyckoff short trigger"
+        bad = self._latest(symbol, WY_LONG, now, self.cfg.wy_ttl_min)
+        if bad and bad[0] > trig[0]:
+            return False, f"{bad[1]} after {trig[1]}"
+        bias = self.smc_bias(symbol, now)
+        if bias == 1 or (self.cfg.require_smc and bias != -1):
+            return False, "SMC swing bias not bearish"
+        return True, f"{trig[1]} + smc_bias={bias}"
+
+    def exit_signal(self, symbol: str, since: float, now: float, side: str = "buy") -> str | None:
+        """Longs exit on a bearish event after entry; shorts exit on a bullish one."""
+        sets = (WY_EXIT, SMC_BEAR) if side == "buy" else (WY_LONG, SMC_BULL)
+        for events in sets:
             hit = self._latest(symbol, events, now, 1e9)
             if hit and hit[0] > since:
                 return hit[1]

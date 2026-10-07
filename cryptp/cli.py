@@ -8,7 +8,7 @@ from .config import load_config
 from .exchange import fetch_ohlcv_df, make_exchange
 from .executor import LiveExecutor, PaperExecutor
 from .indicators import atr
-from .planner import build_plan
+from .planner import build_plan_any
 from .risk import RiskGate, position_size
 from .screener import scan
 from .structure import analyze
@@ -34,7 +34,7 @@ def cmd_analyze(cfg, args):
     print(f"{args.symbol} price={price} atr={a:.4f}")
     print(f"LTF trend={ms.trend} bos={ms.bos} support={ms.support} resistance={ms.resistance}")
     print(f"HTF trend={htf.trend}")
-    plan = build_plan(args.symbol, price, a, ms, htf.trend, cfg.plan)
+    plan = build_plan_any(args.symbol, price, a, ms, htf.trend, cfg.plan)
     print(plan or "no valid long plan")
 
 
@@ -66,7 +66,7 @@ def cmd_run(cfg, args):
         for _, row in scan(ex, cfg).iterrows():
             df, ms, htf = _structure(ex, cfg, row["symbol"])
             price, a = float(df["close"].iloc[-1]), float(atr(df).iloc[-1])
-            plan = build_plan(row["symbol"], price, a, ms, htf.trend, cfg.plan)
+            plan = build_plan_any(row["symbol"], price, a, ms, htf.trend, cfg.plan)
             if not plan:
                 continue
             ok, why = gate.check(plan, equity)
@@ -105,9 +105,9 @@ def cmd_backtest(cfg, args):
     if args.stop_mult is not None:
         cfg.plan.min_stop_cost_mult = args.stop_mult
     res = run_backtest(df, args.symbol, cfg, fee_rate=args.fee / 100, slippage_bps=args.slip,
-                       dm_mode=args.dm)
+                       dm_mode=args.dm, sides=args.sides)
     print(f"{args.symbol} {tf}  {df['ts'].iloc[0]:%Y-%m-%d} -> {df['ts'].iloc[-1]:%Y-%m-%d}  "
-          f"{len(df)} bars  fee {args.fee}%/side  slippage {args.slip}bps  start equity {args.equity}  dumb-money {args.dm or cfg.dumb_money.mode}")
+          f"{len(df)} bars  fee {args.fee}%/side  slippage {args.slip}bps  start equity {args.equity}  dumb-money {args.dm or cfg.dumb_money.mode}  sides {args.sides or cfg.plan.sides}")
     print(format_summary("ALL", summarize(res.trades, res.equity0, res.equity)))
     ins, oos, cut = split_trades(res.trades, args.split, df)
     print(format_summary(f"in-sample", summarize(ins, res.equity0)))
@@ -212,6 +212,7 @@ def main():
     b.add_argument("--split", type=float, default=0.7)
     b.add_argument("--dm", choices=["off", "veto", "require"], help="dumb-money filter (default: config)")
     b.add_argument("--stop-mult", type=float, help="override plan.min_stop_cost_mult (0 = no fee-aware stop filter)")
+    b.add_argument("--sides", choices=["long", "short", "both"], help="override plan.sides")
     b.add_argument("--out")
     pp = sub.add_parser("popular")
     pp.add_argument("--csv")

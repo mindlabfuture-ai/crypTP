@@ -99,12 +99,30 @@ def compute(df: pd.DataFrame, euphoria_bars: int = 6, capitulation_bars: int = 1
     return out
 
 
+def normalize_mode(mode) -> str:
+    """YAML 1.1 reads a bare `off` as boolean False; treat False/None as "off" so it can never run as a gate."""
+    return "off" if mode in (False, None, "") else str(mode)
+
+
 def gate_long(row, mode: str) -> tuple[bool, str]:
     """mode: off | veto (block euphoria) | require (also demand recent capitulation)."""
+    mode = normalize_mode(mode)
     if mode == "off" or row is None:
         return True, "dumb-money filter off"
     if bool(row["euphoric"]):
         return False, "crowd euphoric (FOMO/herd/chase or index hot)"
     if mode == "require" and not bool(row["capitulation"]):
         return False, "no recent crowd capitulation"
+    return True, "ok"
+
+
+def gate_short(row, mode: str) -> tuple[bool, str]:
+    """Mirror of gate_long: do not short into capitulation; `require` wants recent euphoria."""
+    mode = normalize_mode(mode)
+    if mode == "off" or row is None:
+        return True, "dumb-money filter off"
+    if bool(row["capitulation"]):
+        return False, "crowd capitulating (panic flush / hopelessness / index cold)"
+    if mode == "require" and not bool(row["euphoric"]):
+        return False, "no recent crowd euphoria"
     return True, "ok"

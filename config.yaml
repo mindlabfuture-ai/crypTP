@@ -18,7 +18,7 @@ structure:
   swing_right: 3
 
 plan:
-  long_only: true
+  sides: long              # long | short | both  (short is the exact mirror of long)
   max_stop_atr: 3.0
   min_stop_atr: 0.5
   r_multiples: [1.0, 2.0, 3.0]     # TP ladder in R
@@ -41,7 +41,7 @@ signals:
   require_smc: true        # long needs a bullish SMC swing bias (CHoCH/BOS) too
 
 dumb_money:
-  mode: off                # off | veto (block longs into crowd euphoria) | require (veto + need capitulation)
+  mode: "off"              # off | veto (block longs into crowd euphoria) | require (veto + need capitulation)
                            # default off: no measurable benefit in the 1H backtest (see README)
   euphoria_bars: 6
   capitulation_bars: 12
