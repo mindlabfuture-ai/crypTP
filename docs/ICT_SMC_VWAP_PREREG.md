@@ -63,3 +63,48 @@ Any miss -> FAIL, no retuning; this is the 9th rule set tried in this repo and t
 ## After
 - FAIL: stop searching for entry signals on this history; next evidence is a paper-forward journal (agent as discretionary assistant).
 - PASS: >= 60 days of paper-forward on Bybit testnet before any live capital; live stays gated; UB would still need its own liquidity check.
+
+---
+# RESULT (single run, rules unchanged from the draft above; approved before running)
+
+Status: **FAIL** (6 of 10 criteria missed). Run with `tools/run_ict.py`. Hand-built detection, limit-fill, lock and break-even tests and the
+price-reflection mirror test passed before the run (144 tests). Prefix (causality) test passed. SEI window 2023-08-15 -> 2026-10-07 (110,323 bars).
+One interpretation fixed during the build (not tuned): a setup whose limit price is touched is consumed even if a filter then rejects it.
+
+**Funnel (SEI, both sides):** sweeps 3,789 long / 3,577 short -> shifts 969 / 928 -> setups with a fair-value gap 394 / 429 -> 823 limit orders.
+Filters at the fill bar rejected 366 (killzone), 51 (VWAP side), 15 (4h bias), 7 (stop size) -> **58 trades** (27 long, 31 short) in three years.
+
+| SEI | Trades | Win % | Avg R | SE | Avg R - 2.5 SE | PF | Net | Max DD |
+|---|---|---|---|---|---|---|---|---|
+| **Main (fees, slippage, funding)** | 58 | 22.4 | -0.187 | 0.256 | -0.825 | 0.76 | -11.2% | -17.8% |
+| Gross (no costs, no funding) | 56 | 25.0 | +0.038 | 0.271 | -0.639 | 1.03 | +1.1% | -10.2% |
+
+| Criterion | Result |
+|---|---|
+| >= 120 trades | **FAIL** (58) |
+| Avg R - 2.5 SE > 0 | **FAIL** (-0.825) |
+| PF >= 1.15 | **FAIL** (0.76) |
+| Gross avg R > 0 | pass (+0.038, indistinguishable from zero) |
+| Max DD < 25% | pass (-17.8%) |
+| Both halves net avg R > 0 | **FAIL** (H1 -0.364 on 31 trades; H2 +0.017 on 27) |
+| >= 60% of months with >= 6 trades positive | **FAIL** (0 of 1 qualifying month) |
+| Beats random-entry p95 | **FAIL** (-0.187 vs p95 +0.409; random median -0.205) |
+| SUI replication (>= 100 trades, avg R > 0, PF > 1) | **FAIL** (60 trades, -0.325 R, PF 0.61) |
+| Prefix test | pass |
+
+Ablations (one change each, reported only): no VWAP filter 91 trades -0.180 R; no killzone 179 trades -0.038 R; no 4h bias 71 trades -0.166 R;
+no FVG (enter at next open after the shift) 104 trades +0.104 R but SE 0.33 and one +29.5 R outlier; long-only 27 trades +0.003 R;
+short-only 31 trades -0.352 R. Maker-entry fee (0.02%) -0.142 R; fee multipliers 0.5x/1x/2x: -0.117 / -0.187 / -0.325 R.
+Exits: 57 stops and 1 break-even stop; 14 trades reached +3R (best +7.2 R). Funding paid $2.86, received $1.48.
+UB (report only, 10 bps slippage): 8 trades, -0.64 R. Not a result: too few trades and the venue is too thin.
+
+Reading:
+- The model is mostly a filter that almost never trades: 823 well-formed ICT setups become 58 trades once the killzone (366 rejected) and VWAP side
+  are required. At 58 trades the standard error on average R is 0.26, so neither an edge nor its absence can be shown; the criteria fail on
+  trade count, a negative point estimate (-0.19 R) and the SUI replication, all in the same direction.
+- Gross edge is +0.04 R, i.e. nothing, before 0.15% of costs on a 0.79% median stop (about 0.19 R).
+- The random-entry p95 (+0.41 R) is wide because 58 random trades with 3R+ runners are very noisy; the main result is below the random median too.
+- None of the ablations is both large and credible: the only positive one (no FVG, +0.10 R) rests on one +29.5 R trade and a standard error three
+  times its value. Reporting it as a lead would be exactly the kind of after-the-fact search this process exists to prevent.
+- Per the pre-registration: no retuning. The honest next evidence is a paper-forward journal, where you (or the agent as assistant) take ICT setups with
+  full context and we measure them out of sample.
