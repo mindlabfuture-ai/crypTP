@@ -24,7 +24,18 @@ regimes (bull and bear years), including out-of-sample.
 | SOL both | -0.24 (586) | -0.07 (161) | fail |
 | SOL both + crowd veto | -0.30 (513) | -0.17 (145) | fail |
 
-0 of 12 variants pass. Shorts also lose in the 2025-26 bear (BTC short: 2025 -0.07, 2026 -0.21 avg R), so the
+| ADA long | -0.26 (291) | -0.30 (99) | fail |
+| ADA short | -0.22 (330) | -0.16 (109) | fail |
+| ADA both | -0.26 (569) | -0.25 (188) | fail |
+| SUI long (data from May 2023) | -0.22 (276) | -0.21 (75) | fail |
+| SUI short | -0.07 (262) | +0.07 (75) | fail (negative overall; OOS n < 100) |
+| SUI both | -0.17 (487) | -0.12 (136) | fail |
+
+0 of 18 variants pass: none has positive average R over the full period, and only two are positive out-of-sample
+(ETH long +0.13 on 67 trades, SUI short +0.07 on 75 trades), both below the 100-trade minimum and expected by chance
+when testing 18 variants. The earlier 12-variant sentence below still holds.
+
+0 of 12 BTC/ETH/SOL variants pass. Shorts also lose in the 2025-26 bear (BTC short: 2025 -0.07, 2026 -0.21 avg R), so the
 problem is not the market regime or the missing short side: the entry logic has no edge after costs.
 
 ## Findings
