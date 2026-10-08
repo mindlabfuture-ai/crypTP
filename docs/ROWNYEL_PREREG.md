@@ -41,3 +41,14 @@ the 5m and 15m chart variants (1h and 4h cover his KAT/PEAQ timeframes; 1d is to
 ## Known limits
 Fractal sweeps occur constantly, so a labelled "stop hunt" can almost always be found afterwards; the test asks whether buying them FORWARD pays, with fixed rules. Coins are correlated, so 15 coins are not 15 independent tests.
 Any variant run after seeing results is labelled exploratory.
+
+---
+## Implementation note (2026-10-08, written before the final run; rules above are unchanged)
+- A fractal level is used up by its FIRST qualifying sweep (whether or not a trade was possible at that moment); a level pierced without a close back above it is consumed. The text above only mentions the second case.
+- Exact trigger details: the break-even stop is armed on the bar whose high reaches +1R (measured from the SIGNAL close) and takes effect from the next bar; a bar that reaches +1R and the stop is a stop.
+- Random-entry control: entry bars drawn uniformly from bar 40 to the second-to-last bar, without replacement; entries that fall while a position is open are skipped, so the control can have slightly fewer trades.
+- SEI and KAT have shorter OKX histories (SEI from 2025-11, KAT newer); G2 is small and reported only as a side note.
+- **Disclosure:** a plumbing run (2 control seeds, G2 containing only SEI because the other downloads were unfinished) was executed on the real data before the final run, so its G1+G3 results were seen.
+  The final run uses identical rules and identical G1+G3 data (only the control seeds go from 2 to 20 and G2 completes), so those numbers cannot change; no rule or parameter was changed after seeing them.
+- The tests were mutation-checked: dropping the upper-half-close rule, never expiring levels, not consuming broken levels, a 4R target, and a 3- or 5-bar look-ahead are all caught.
+  Using a fractal one bar early is an equivalent mutant (the confirming bars of a fractal can never pierce it), so it is correctly not caught.
