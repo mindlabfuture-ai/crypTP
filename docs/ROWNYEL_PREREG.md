@@ -52,3 +52,27 @@ Any variant run after seeing results is labelled exploratory.
   The final run uses identical rules and identical G1+G3 data (only the control seeds go from 2 to 20 and G2 completes), so those numbers cannot change; no rule or parameter was changed after seeing them.
 - The tests were mutation-checked: dropping the upper-half-close rule, never expiring levels, not consuming broken levels, a 4R target, and a 3- or 5-bar look-ahead are all caught.
   Using a fractal one bar early is an equivalent mutant (the confirming bars of a fractal can never pierce it), so it is correctly not caught.
+
+---
+## Results (appended 2026-10-08 after the final run; the pre-registered text above is unchanged)
+Run: `PYTHONPATH=. python tools/run_fractalsweep.py --seeds 20` (net) and `--gross --seeds 8` (diagnostic). OKX perps resampled to 1h and 4h, 15 coins in the verdict group (G1+G3), cut 2026-03-02.
+Average R per trade (trades). The G1+G3 numbers are identical to the preliminary plumbing run disclosed above.
+
+| config | pooled G1+G3 (net) | in-sample | out-of-sample | his coins G2 | random-entry control, mean [5-95%] | verdict |
+|---|---|---|---|---|---|---|
+| 1h-A (fixed 5R) | -0.185 (3,992) | -0.248 | -0.008 | -0.122 (743) | -0.122 [-0.172, -0.067] | **FAIL** |
+| 1h-B (break-even at +1R) | -0.154 (4,961) | -0.183 | -0.077 | -0.108 (901) | -0.088 [-0.138, -0.055] | **FAIL** |
+| 4h-A | -0.197 (1,477) | -0.272 | -0.004 | -0.205 (250) | -0.123 [-0.192, -0.067] | **FAIL** |
+| 4h-B | -0.098 (1,692) | -0.112 | -0.062 | -0.108 (294) | -0.069 [-0.122, -0.013] | **FAIL** |
+
+Win rates 9-15% against 16.7% needed to break even at 5R. Every config fails "pooled avg R > 0", both half criteria, and "avg R - 2 SE > 0" (-0.25, -0.20, -0.30, -0.18).
+**The sweep did worse than random entries with the same stop and target rules in all four configs** (below the control's 5th percentile in 1h-A, 1h-B and 4h-A; inside its range in 4h-B). It never came near beating the control's 95th percentile.
+The control itself loses (-0.07 to -0.12R net): a long-only book with a wide stop and a far target lost money in this period regardless of any sweep.
+
+**Diagnostic, zero fees and slippage (not a criterion):** pooled -0.119 (1h-A), -0.088 (1h-B), -0.142 (4h-A), -0.041 (4h-B); out-of-sample +0.062, -0.006, +0.056, +0.006 with lower 2 SE bounds of -0.08 to -0.16 (noise);
+control means -0.03 to -0.07. Costs are about 0.06R per trade here (wide stops make them small), so they are not what sinks it: before costs the signal is already negative in-sample and about zero out-of-sample.
+His own coins are no better than the rest (G2 -0.11 to -0.21 net).
+
+**What this does and does not show.** A mechanical reading of "buy the sweep of a fractal low, stop under the wick, 5R target" has no edge on 15 liquid alts over two years, net or gross, and entering such sweeps was worse than entering at random.
+It does NOT test the Elliott-wave context, hand-picked entries and targets (his plans were 5-53R; 5R is the low end), the choice of which coins and which moments to post, or his position sizing; the posted plans were 3 stopped, 1 open at a loss and 1 unscoreable when checked (see above).
+The pre-registered conclusion stands: no evidence of an edge. No parameter was tuned after seeing results; any variant from here is exploratory.
