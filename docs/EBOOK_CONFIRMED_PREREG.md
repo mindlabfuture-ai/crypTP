@@ -44,3 +44,27 @@ This is a simplified model of the book's confirmation sequence, not a full repro
 
 ## Known limits
 Fractal sweeps and CHoCH-type breaks occur constantly, so a confirmed setup can nearly always be found afterwards; this test asks whether they pay when traded forward under fixed rules. Coins are correlated. Any variant run after seeing results is labelled exploratory.
+
+---
+## Results (appended 2026-10-08 after the run; the pre-registered text above is unchanged)
+Run: `PYTHONPATH=. python tools/run_confirmed.py` (net) and `--gross` (diagnostic). No preliminary run on real data was made before this one; the tests were mutation-checked first (an HTF look-ahead, a wick-only CHoCH, dropped cancel/reward:risk rules, a wrong-target rule and a skipped IDM are all caught).
+OKX perps, 15 coins pooled, cut 2026-03-02. Average R per trade (trades), net of costs:
+
+| config | pooled | in-sample | out-of-sample | long / short | verdict | adds over its control? |
+|---|---|---|---|---|---|---|
+| 1h-M1 (CHoCH + IDM) | -0.245 (190) | -0.345 | +0.140 (39) | -0.344 / -0.119 | inconclusive (<300 trades) | no |
+| 1h-M2 (CHoCH only) | -0.309 (263) | -0.348 | -0.169 (57) | -0.368 / -0.250 | inconclusive (<300 trades) | no |
+| 4h-M1 | -0.350 (425) | -0.382 | -0.260 (110) | -0.362 / -0.335 | **FAIL** | no |
+| 4h-M2 | -0.120 (540) | -0.159 | -0.003 (134) | -0.081 / -0.168 | **FAIL** | no |
+| **1h-C0 control (no confirmation)** | **-0.210 (1,671)** | -0.231 | -0.123 | -0.325 / -0.073 | | |
+| **4h-C0 control** | **-0.150 (1,023)** | -0.148 | -0.155 | -0.152 / -0.149 | | |
+
+Win rates 6-12% (a break-even stop at +1R turns many reversals into scratches). The 1h configs are formally inconclusive under the pre-set 300-trade minimum, but their 2-SE intervals lie entirely below zero (1h-M1 upper bound -0.04, 1h-M2 -0.15).
+**Waiting for confirmation did not help.** Every confirmed config is at or below its unconfirmed control; none comes near the control's upper 2-SE bound (1h -0.139, 4h -0.048). The best, 4h-M2 (-0.120 vs -0.150), is a 0.03R difference, which is noise.
+The only visible effect of confirmation is that it throws away most setups: 1,671 -> 190 / 263 trades on 1h, 1,023 -> 425 / 540 on 4h, without improving what is left.
+**Diagnostic, zero costs:** pooled -0.159, -0.228, -0.277, -0.044 for the four configs, controls -0.113 (1h) and -0.067 (4h); out-of-sample +0.235 (n=39), -0.076, -0.182, +0.071, all inside the noise.
+Costs are not the cause: before costs the confirmed entries are still negative or about zero, and none beats its control.
+
+**What this does and does not show.** This mechanical version of the e-book's confirmation sequence (HTF sweep, 15m body-close CHoCH, optional inducement sweep, structure stop, nearest-HTF-fractal target, break-even at +1R) has no edge on 15 liquid alts over two years,
+and the confirmation itself added nothing over entering right after the sweep. It does NOT test order-block and imbalance quality, session liquidity, the book's 5m timeframe (only 15m was available), flip and single-candle entries, scaling in, HTF trend bias, or discretionary zone choice.
+So it rejects this mechanical reading, not the book's full discretionary use. The pre-registered conclusion stands: no evidence of an edge. Nothing was tuned after seeing results; any variant from here is exploratory.
